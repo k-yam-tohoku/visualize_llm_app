@@ -130,6 +130,8 @@ function App() {
   const [isLoadingSamples, setIsLoadingSamples] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Show the explanation on load; re-openable from the title.
+  const [isAboutOpen, setIsAboutOpen] = useState(true);
 
   useEffect(() => {
     if (!jobId) return;
@@ -256,7 +258,17 @@ function App() {
       <header className="topbar">
         <div className="brand">
           <p className="eyebrow">Visualize LLM Demo</p>
-          <h1>次の単語を予測する仕組み</h1>
+          <h1 className="brand-title">
+            <button
+              type="button"
+              className="brand-titleBtn"
+              onClick={() => setIsAboutOpen(true)}
+              title="このデモの説明を表示"
+            >
+              次の単語を予測する仕組み
+              <span className="brand-hint" aria-hidden="true">?</span>
+            </button>
+          </h1>
         </div>
 
         <form className="controls" onSubmit={startAnalysis}>
@@ -345,6 +357,99 @@ function App() {
           onClose={() => setIsSamplesOpen(false)}
         />
       )}
+      {isAboutOpen && <AboutModal onClose={() => setIsAboutOpen(false)} />}
+    </div>
+  );
+}
+
+function AboutModal({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="modal" onClick={onClose}>
+      <div
+        className="modalBody aboutModalBody"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <p className="eyebrow">About</p>
+            <h2>このデモについて</h2>
+          </div>
+          <button className="ghost closeButton" onClick={onClose} aria-label="閉じる">
+            ✕
+          </button>
+        </header>
+
+        <div className="aboutContent">
+          <section>
+            <h3>👀 何を見るデモ？</h3>
+            <p>
+              <strong>AI（大規模言語モデル）が次の単語を予測する仕組み</strong>を可視化します。
+              ChatGPT や翻訳 AI は「文章の次の単語を予測する」ことを繰り返して文章を作っています。
+              たとえば「雲の切れ間から、光が」→「<span className="accentWord">差す</span>」のように、
+              続きの単語を予測します。
+              その予測が AI の内部でどう組み立てられるかを、層ごとに覗けます。
+            </p>
+          </section>
+
+          <section>
+            <h3>📝 使い方</h3>
+            <ul>
+              <li>
+                文章を<strong>途中まで</strong>入力（例: Sendai is located in the country of）
+              </li>
+              <li>
+                AI に予測させたい<strong>次の単語</strong>を入力（例: Japan）
+              </li>
+              <li>
+                <strong>Go</strong> で解析開始。AI 内部の予測の流れが図として表示されます
+              </li>
+              <li>
+                それぞれの箱を<strong>クリック</strong>すると、詳細（注意パターン・予測ランキング）が見られます
+              </li>
+            </ul>
+            <p>
+              💡 迷ったら <strong>Random</strong> / <strong>Samples</strong> でサンプル文章を入力できます
+            </p>
+          </section>
+
+          <section>
+            <h3>🔍 図の見方</h3>
+            <ul>
+              <li>
+                <strong>Input</strong>: 入力文を AI が処理できる形に加工する部分
+              </li>
+              <li>
+                <strong>A0.H0</strong> など（Attention）: どの単語に注目するかを決める場所
+              </li>
+              <li>
+                <strong>MLP0</strong> など: 注目した情報から「次の単語のヒント」を作る場所
+              </li>
+              <li>
+                <strong>Output</strong>: 🎯 最終的な予測（次の単語）を決める部分
+              </li>
+            </ul>
+          </section>
+
+          <section>
+            <h3>🎨 色の意味</h3>
+            <ul>
+              <li>
+                箱の<span className="accent-green">枠線・接続線が緑に近い</span>ほど、その地点で期待する単語を
+                <strong>上位で予測</strong>している（正解に近い）
+              </li>
+              <li>グレーに近いほど順位が低い（5000 位以下はグレーで固定）</li>
+            </ul>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
