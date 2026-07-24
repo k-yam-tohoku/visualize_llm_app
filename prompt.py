@@ -1,13 +1,12 @@
 import csv
 import random
 from pathlib import Path
-from typing import Optional, Tuple
 
 import torch
 from transformer_lens import HookedTransformer
 
 
-def get_random_prompt(csv_path: str = "data/prompt_sample.csv") -> Tuple[str, str]:
+def get_random_prompt(csv_path: str = "data/prompt_sample.csv") -> tuple[str, str]:
     """
     CSV ファイルからランダムにプロンプトと対応する object を1つ取得する.
 
@@ -15,7 +14,7 @@ def get_random_prompt(csv_path: str = "data/prompt_sample.csv") -> Tuple[str, st
         csv_path (str): CSV ファイルのパス.
 
     Returns:
-        Tuple[str, str]: (プロンプト文字列, object 文字列) のタプル.
+        tuple[str, str]: (プロンプト文字列, object 文字列) のタプル.
     """
     csv_file = Path(csv_path)
 
@@ -31,7 +30,9 @@ def get_random_prompt(csv_path: str = "data/prompt_sample.csv") -> Tuple[str, st
     return selected["prompt"], selected["object"]
 
 
-def get_prompt_samples(csv_path: str = "data/prompt_sample.csv") -> list[dict[str, str]]:
+def get_prompt_samples(
+    csv_path: str = "data/prompt_sample.csv",
+) -> list[dict[str, str]]:
     """
     CSV ファイルからサンプルプロンプト一覧を取得する.
 
@@ -57,12 +58,34 @@ def get_prompt_samples(csv_path: str = "data/prompt_sample.csv") -> list[dict[st
     return samples
 
 
+def get_expected_token_ids(
+    model: HookedTransformer,
+    prompt: str,
+    expected_answer: str,
+) -> list[int]:
+    """Return unique first-token candidates with and without a separating space."""
+    if not expected_answer:
+        return []
+
+    prompt_length = len(model.to_tokens(prompt, prepend_bos=False)[0])
+    token_ids = []
+    for separator in (" ", ""):
+        full_tokens = model.to_tokens(
+            prompt + separator + expected_answer,
+            prepend_bos=False,
+        )[0]
+        if len(full_tokens) > prompt_length:
+            token_ids.append(int(full_tokens[prompt_length].item()))
+
+    return list(dict.fromkeys(token_ids))
+
+
 def check_answer_correctness(
     model: HookedTransformer,
     prompt: str,
     logits: torch.Tensor,
     expected_answer: str,
-) -> Optional[bool]:
+) -> bool | None:
     """
     モデルの出力と期待される答えが一致するかを文脈を考慮してチェックする関数.
 
@@ -75,52 +98,13 @@ def check_answer_correctness(
         expected_answer (str): 期待される答えの文字列.
 
     Returns:
-        Optional[bool]: 一致判定結果.
+        bool | None: 一致判定結果.
             - None の場合は期待される答えが空文字列.
             - True の場合は一致, False の場合は不一致.
     """
     if not expected_answer:
         return None
 
-    # モデル出力の最初のトークン ID (logits から直接取得)
     predicted_first_token_id = logits[0, -1].argmax().item()
-
-    # プロンプト + 期待される答えの形でトークン化 (文脈を考慮)
-    # スペース有り/無しの両パターンで試行
-    full_text_with_space = prompt + " " + expected_answer
-    full_text_without_space = prompt + expected_answer
-
-    # プロンプト部分のトークン数を取得
-    prompt_tokens = model.to_tokens(prompt, prepend_bos=False)[0]
-    prompt_length = len(prompt_tokens)
-
-    # 文脈を考慮した期待される答えの最初のトークン ID を取得
-    full_tokens_with_space = model.to_tokens(full_text_with_space, prepend_bos=False)[0]
-    full_tokens_without_space = model.to_tokens(
-        full_text_without_space, prepend_bos=False
-    )[0]
-
-    # プロンプトの後の最初のトークン ID を取得
-    expected_first_token_id_with_space = None
-    expected_first_token_id_without_space = None
-
-    if len(full_tokens_with_space) > prompt_length:
-        expected_first_token_id_with_space = full_tokens_with_space[
-            prompt_length
-        ].item()
-
-    if len(full_tokens_without_space) > prompt_length:
-        expected_first_token_id_without_space = full_tokens_without_space[
-            prompt_length
-        ].item()
-
-    # どちらかのパターンと一致しているかチェック
-    is_correct = (
-        expected_first_token_id_with_space is not None
-        and predicted_first_token_id == expected_first_token_id_with_space
-    ) or (
-        expected_first_token_id_without_space is not None
-        and predicted_first_token_id == expected_first_token_id_without_space
-    )
-
-    return is_correct
+    expected_token_ids = get_expected_token_ids(model, prompt, expected_answer)
+    return predicted_first_token_id in expected_token_ids

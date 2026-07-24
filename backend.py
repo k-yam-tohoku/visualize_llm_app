@@ -1,5 +1,7 @@
 import threading
+import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -15,10 +17,18 @@ from transformer_lens.utils import get_act_name
 
 from logits import _compute_all_components_logits
 from model import get_cache, get_output
-from prompt import check_answer_correctness, get_prompt_samples, get_random_prompt
+from prompt import (
+    check_answer_correctness,
+    get_expected_token_ids,
+    get_prompt_samples,
+    get_random_prompt,
+)
 
 
 MODEL_NAME = "gpt2-small"
+MAX_PENDING_JOBS = 4
+MAX_RETAINED_JOBS = 8
+JOB_TTL_SECONDS = 15 * 60
 
 app = FastAPI(title="Visualize LLM API")
 app.add_middleware(
@@ -39,6 +49,11 @@ _model: HookedTransformer | None = None
 _model_lock = threading.Lock()
 _jobs: dict[str, "AnalysisJob"] = {}
 _jobs_lock = threading.Lock()
+_job_slots = threading.BoundedSemaphore(MAX_PENDING_JOBS)
+_analysis_executor = ThreadPoolExecutor(
+    max_workers=1,
+    thread_name_prefix="analysis",
+)
 
 
 class AnalyzeRequest(BaseModel):
@@ -124,6 +139,8 @@ class AnalysisJob:
     current_step: str = "待機中"
     error: str | None = None
     nodes: dict[str, NodeRecord] = field(default_factory=dict)
+    created_at: float = field(default_factory=time.monotonic)
+    finished_at: float | None = None
 
     @property
     def total_nodes(self) -> int | None:
@@ -146,13 +163,37 @@ def load_model() -> HookedTransformer:
 
 def snapshot_job(job_id: str) -> AnalysisJob:
     with _jobs_lock:
+        cleanup_jobs_locked()
         job = _jobs.get(job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="job not found")
         return job
 
 
-def init_nodes(job: AnalysisJob, ranks: dict[str, int], n_layers: int, n_heads: int) -> None:
+def cleanup_jobs_locked() -> None:
+    now = time.monotonic()
+    terminal_jobs = [
+        job
+        for job in _jobs.values()
+        if job.state in {"completed", "failed"} and job.finished_at is not None
+    ]
+
+    for job in terminal_jobs:
+        if now - job.finished_at >= JOB_TTL_SECONDS:
+            _jobs.pop(job.job_id, None)
+
+    retained_terminal_jobs = sorted(
+        (job for job in _jobs.values() if job.state in {"completed", "failed"}),
+        key=lambda job: job.finished_at or job.created_at,
+        reverse=True,
+    )
+    for job in retained_terminal_jobs[MAX_RETAINED_JOBS:]:
+        _jobs.pop(job.job_id, None)
+
+
+def init_nodes(
+    job: AnalysisJob, ranks: dict[str, int], n_layers: int, n_heads: int
+) -> None:
     nodes: dict[str, NodeRecord] = {
         "Input": NodeRecord(kind="input", ready=True, rank=ranks.get("Input"))
     }
@@ -184,6 +225,8 @@ def update_job(job_id: str, **fields) -> None:
         job = _jobs[job_id]
         for key, value in fields.items():
             setattr(job, key, value)
+        if job.state in {"completed", "failed"} and job.finished_at is None:
+            job.finished_at = time.monotonic()
 
 
 def run_analysis(job_id: str) -> None:
@@ -201,7 +244,9 @@ def run_analysis(job_id: str) -> None:
 
         update_job(job_id, current_step="ノードの順位を計算中")
         layer_logits, head_logits = _compute_all_components_logits(model, cache)
-        ranks = calculate_ranks(model, job.prompt, job.expected_answer, layer_logits, head_logits)
+        ranks = calculate_ranks(
+            model, job.prompt, job.expected_answer, layer_logits, head_logits
+        )
 
         n_layers = model.cfg.n_layers
         n_heads = model.cfg.n_heads
@@ -213,7 +258,10 @@ def run_analysis(job_id: str) -> None:
             current.n_heads = n_heads
             init_nodes(current, ranks, n_layers, n_heads)
 
-        tokens = [token.replace(" ", "_") for token in model.to_str_tokens(job.prompt, prepend_bos=False)]
+        tokens = [
+            token.replace(" ", "_")
+            for token in model.to_str_tokens(job.prompt, prepend_bos=False)
+        ]
 
         update_job(
             job_id,
@@ -244,6 +292,8 @@ def run_analysis(job_id: str) -> None:
         update_job(job_id, state="completed", current_step="予測完了")
     except Exception as exc:
         update_job(job_id, state="failed", current_step="失敗", error=str(exc))
+    finally:
+        _job_slots.release()
 
 
 def round_matrix(values, digits: int = 4) -> list[list[float]]:
@@ -254,7 +304,9 @@ def top_logits_data(
     values: torch.Tensor, model: HookedTransformer, top_k: int = 10
 ) -> LogitsData:
     top_values, top_indices = torch.topk(values.detach().cpu(), k=top_k)
-    tokens = [model.tokenizer.decode([int(index)]).replace(" ", "_") for index in top_indices]
+    tokens = [
+        model.tokenizer.decode([int(index)]).replace(" ", "_") for index in top_indices
+    ]
     return LogitsData(
         tokens=tokens,
         values=[round(float(value), 4) for value in top_values],
@@ -268,37 +320,29 @@ def calculate_ranks(
     layer_logits: torch.Tensor,
     head_logits: torch.Tensor,
 ) -> dict[str, int]:
-    if not expected_answer:
-        return {}
-
-    full_text_with_space = prompt + " " + expected_answer
-    full_text_without_space = prompt + expected_answer
-    prompt_tokens = model.to_tokens(prompt, prepend_bos=False)[0]
-    prompt_length = len(prompt_tokens)
-    full_tokens_with_space = model.to_tokens(full_text_with_space, prepend_bos=False)[0]
-    full_tokens_without_space = model.to_tokens(full_text_without_space, prepend_bos=False)[0]
-
-    object_token_id = None
-    if len(full_tokens_with_space) > prompt_length:
-        object_token_id = full_tokens_with_space[prompt_length].item()
-    elif len(full_tokens_without_space) > prompt_length:
-        object_token_id = full_tokens_without_space[prompt_length].item()
-    if object_token_id is None:
+    expected_token_ids = get_expected_token_ids(model, prompt, expected_answer)
+    if not expected_token_ids:
         return {}
 
     ranks: dict[str, int] = {"Input": model.cfg.d_vocab}
     for layer_idx in range(model.cfg.n_layers):
-        sorted_indices = torch.argsort(layer_logits[layer_idx], descending=True)
-        ranks[f"MLP{layer_idx}"] = (
-            (sorted_indices == object_token_id).nonzero(as_tuple=True)[0].item() + 1
+        ranks[f"MLP{layer_idx}"] = _best_candidate_rank(
+            layer_logits[layer_idx],
+            expected_token_ids,
         )
         for head_idx in range(model.cfg.n_heads):
-            sorted_indices = torch.argsort(head_logits[layer_idx, head_idx], descending=True)
-            ranks[f"A{layer_idx}.H{head_idx}"] = (
-                (sorted_indices == object_token_id).nonzero(as_tuple=True)[0].item() + 1
+            ranks[f"A{layer_idx}.H{head_idx}"] = _best_candidate_rank(
+                head_logits[layer_idx, head_idx],
+                expected_token_ids,
             )
     ranks["Output"] = ranks[f"MLP{model.cfg.n_layers - 1}"]
     return ranks
+
+
+def _best_candidate_rank(values: torch.Tensor, token_ids: list[int]) -> int:
+    candidate_indices = torch.tensor(token_ids, device=values.device)
+    best_candidate_logit = values[candidate_indices].max()
+    return int((values > best_candidate_logit).sum().item() + 1)
 
 
 def serialize_job(job: AnalysisJob) -> JobStatusResponse:
@@ -333,23 +377,38 @@ def prompt_samples() -> list[PromptSampleResponse]:
     return [PromptSampleResponse(**sample) for sample in get_prompt_samples()]
 
 
+def normalize_demo_input(value: str) -> str:
+    """Ignore accidental surrounding whitespace in this user-facing demo."""
+    return value.strip()
+
+
 @app.post("/api/analyze", response_model=AnalyzeResponse)
 def analyze(request: AnalyzeRequest) -> AnalyzeResponse:
-    prompt = request.prompt.strip()
+    prompt = normalize_demo_input(request.prompt)
     if not prompt:
         raise HTTPException(status_code=400, detail="prompt is required")
+    if not _job_slots.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429,
+            detail="analysis queue is full; try again later",
+        )
 
     job_id = uuid.uuid4().hex
     job = AnalysisJob(
         job_id=job_id,
         prompt=prompt,
-        expected_answer=request.expected_answer.strip(),
+        expected_answer=normalize_demo_input(request.expected_answer),
     )
-    with _jobs_lock:
-        _jobs[job_id] = job
-
-    thread = threading.Thread(target=run_analysis, args=(job_id,), daemon=True)
-    thread.start()
+    try:
+        with _jobs_lock:
+            cleanup_jobs_locked()
+            _jobs[job_id] = job
+        _analysis_executor.submit(run_analysis, job_id)
+    except Exception:
+        with _jobs_lock:
+            _jobs.pop(job_id, None)
+        _job_slots.release()
+        raise
     return AnalyzeResponse(job_id=job_id)
 
 
@@ -366,6 +425,8 @@ def node_detail(job_id: str, node_name: str) -> NodeDetailResponse:
         raise HTTPException(status_code=404, detail="node not found")
     if not node.ready:
         raise HTTPException(status_code=202, detail="node is not ready")
+    if node.attention is None and node.logits is None:
+        raise HTTPException(status_code=404, detail="node has no detail")
     return NodeDetailResponse(
         node=node_name,
         kind=node.kind,

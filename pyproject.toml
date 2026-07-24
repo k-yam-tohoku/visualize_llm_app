@@ -24,7 +24,6 @@ dependencies = [
     "pyarrow==14.0.2",
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.23.0",
-    "python-multipart>=0.0.6",
 ]
 
 [project.urls]
@@ -48,6 +47,9 @@ target-version = ['py310']
 profile = "black"
 multi_line_output = 3
 line_length = 88
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 # Application (not a distributable library): uv manages dependencies but does
 # not build/install this project itself into the environment.
