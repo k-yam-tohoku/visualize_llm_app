@@ -509,17 +509,21 @@ button:disabled {
   pointer-events: none;
 }
 
-.svgNode.ready {
+.svgNode.interactive {
   cursor: pointer;
 }
 
-.svgNode.pending {
+.svgNode.pending,
+.svgNode.static {
   cursor: default;
+}
+
+.svgNode.pending {
   opacity: 0.32;
 }
 
-.svgNode.ready:hover rect,
-.svgNode.ready:focus-visible rect {
+.svgNode.interactive:hover rect,
+.svgNode.interactive:focus-visible rect {
   filter: drop-shadow(0 0 10px var(--rank-color));
 }
 

@@ -166,6 +166,10 @@ function App() {
 
   async function startAnalysis(event: React.FormEvent) {
     event.preventDefault();
+    const normalizedPrompt = prompt.trim();
+    const normalizedExpectedAnswer = expectedAnswer.trim();
+    setPrompt(normalizedPrompt);
+    setExpectedAnswer(normalizedExpectedAnswer);
     setMessage(null);
     setSelected(null);
     setStatus(null);
@@ -174,7 +178,10 @@ function App() {
       const response = await fetch(`${API_BASE}/api/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, expected_answer: expectedAnswer }),
+        body: JSON.stringify({
+          prompt: normalizedPrompt,
+          expected_answer: normalizedExpectedAnswer,
+        }),
       });
       if (!response.ok) throw new Error("分析を開始できませんでした");
       const data = (await response.json()) as { job_id: string };
@@ -225,7 +232,7 @@ function App() {
   }
 
   async function openNode(nodeName: string, node: NodeStatus) {
-    if (!jobId || !node.ready) return;
+    if (!jobId || !node.ready || node.kind === "input") return;
     setMessage(null);
     const response = await fetch(
       `${API_BASE}/api/jobs/${jobId}/nodes/${encodeURIComponent(nodeName)}`,
@@ -362,7 +369,21 @@ function App() {
   );
 }
 
-function AboutModal({ onClose }: { onClose: () => void }) {
+function ModalFrame({
+  eyebrow,
+  title,
+  bodyClassName = "",
+  headerExtra,
+  children,
+  onClose,
+}: {
+  eyebrow: string;
+  title: React.ReactNode;
+  bodyClassName?: string;
+  headerExtra?: React.ReactNode;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
@@ -374,83 +395,96 @@ function AboutModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="modal" onClick={onClose}>
       <div
-        className="modalBody aboutModalBody"
+        className={`modalBody ${bodyClassName}`.trim()}
         onClick={(event) => event.stopPropagation()}
       >
         <header>
           <div>
-            <p className="eyebrow">About</p>
-            <h2>このデモについて</h2>
+            <p className="eyebrow">{eyebrow}</p>
+            <h2>{title}</h2>
+            {headerExtra}
           </div>
           <button className="ghost closeButton" onClick={onClose} aria-label="閉じる">
             ✕
           </button>
         </header>
-
-        <div className="aboutContent">
-          <section>
-            <h3>👀 何を見るデモ？</h3>
-            <p>
-              <strong>AI（大規模言語モデル）が次の単語を予測する仕組み</strong>を可視化します。
-              ChatGPT や翻訳 AI は「文章の次の単語を予測する」ことを繰り返して文章を作っています。
-              たとえば「雲の切れ間から、光が」→「<span className="accentWord">差す</span>」のように、
-              続きの単語を予測します。
-              その予測が AI の内部でどう組み立てられるかを、層ごとに覗けます。
-            </p>
-          </section>
-
-          <section>
-            <h3>📝 使い方</h3>
-            <ul>
-              <li>
-                文章を<strong>途中まで</strong>入力（例: Sendai is located in the country of）
-              </li>
-              <li>
-                AI に予測させたい<strong>次の単語</strong>を入力（例: Japan）
-              </li>
-              <li>
-                <strong>Go</strong> で解析開始。AI 内部の予測の流れが図として表示されます
-              </li>
-              <li>
-                それぞれの箱を<strong>クリック</strong>すると、詳細（注意パターン・予測ランキング）が見られます
-              </li>
-            </ul>
-            <p>
-              💡 迷ったら <strong>Random</strong> / <strong>Samples</strong> でサンプル文章を入力できます
-            </p>
-          </section>
-
-          <section>
-            <h3>🔍 図の見方</h3>
-            <ul>
-              <li>
-                <strong>Input</strong>: 入力文を AI が処理できる形に加工する部分
-              </li>
-              <li>
-                <strong>A0.H0</strong> など（Attention）: どの単語に注目するかを決める場所
-              </li>
-              <li>
-                <strong>MLP0</strong> など: 注目した情報から「次の単語のヒント」を作る場所
-              </li>
-              <li>
-                <strong>Output</strong>: 🎯 最終的な予測（次の単語）を決める部分
-              </li>
-            </ul>
-          </section>
-
-          <section>
-            <h3>🎨 色の意味</h3>
-            <ul>
-              <li>
-                箱の<span className="accent-green">枠線・接続線が緑に近い</span>ほど、その地点で期待する単語を
-                <strong>上位で予測</strong>している（正解に近い）
-              </li>
-              <li>グレーに近いほど順位が低い（5000 位以下はグレーで固定）</li>
-            </ul>
-          </section>
-        </div>
+        {children}
       </div>
     </div>
+  );
+}
+
+function AboutModal({ onClose }: { onClose: () => void }) {
+  return (
+    <ModalFrame
+      eyebrow="About"
+      title="このデモについて"
+      bodyClassName="aboutModalBody"
+      onClose={onClose}
+    >
+      <div className="aboutContent">
+        <section>
+          <h3>👀 何を見るデモ？</h3>
+          <p>
+            <strong>AI（大規模言語モデル）が次の単語を予測する仕組み</strong>を可視化します。
+            ChatGPT や翻訳 AI は「文章の次の単語を予測する」ことを繰り返して文章を作っています。
+            たとえば「雲の切れ間から、光が」→「<span className="accentWord">差す</span>」のように、
+            続きの単語を予測します。
+            その予測が AI の内部でどう組み立てられるかを、層ごとに覗けます。
+          </p>
+        </section>
+
+        <section>
+          <h3>📝 使い方</h3>
+          <ul>
+            <li>
+              文章を<strong>途中まで</strong>入力（例: Sendai is located in the country of）
+            </li>
+            <li>
+              AI に予測させたい<strong>次の単語</strong>を入力（例: Japan）
+            </li>
+            <li>
+              <strong>Go</strong> で解析開始。AI 内部の予測の流れが図として表示されます
+            </li>
+            <li>
+              それぞれの箱を<strong>クリック</strong>すると、詳細（注意パターン・予測ランキング）が見られます
+            </li>
+          </ul>
+          <p>
+            💡 迷ったら <strong>Random</strong> / <strong>Samples</strong> でサンプル文章を入力できます
+          </p>
+        </section>
+
+        <section>
+          <h3>🔍 図の見方</h3>
+          <ul>
+            <li>
+              <strong>Input</strong>: 入力文を AI が処理できる形に加工する部分
+            </li>
+            <li>
+              <strong>A0.H0</strong> など（Attention）: どの単語に注目するかを決める場所
+            </li>
+            <li>
+              <strong>MLP0</strong> など: 注目した情報から「次の単語のヒント」を作る場所
+            </li>
+            <li>
+              <strong>Output</strong>: 🎯 最終的な予測（次の単語）を決める部分
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <h3>🎨 色の意味</h3>
+          <ul>
+            <li>
+              箱の<span className="accent-green">枠線・接続線が緑に近い</span>ほど、その地点で期待する単語を
+              <strong>上位で予測</strong>している（正解に近い）
+            </li>
+            <li>グレーに近いほど順位が低い（5000 位以下はグレーで固定）</li>
+          </ul>
+        </section>
+      </div>
+    </ModalFrame>
   );
 }
 
@@ -729,6 +763,7 @@ const SvgNode = React.memo(function SvgNode({
 }) {
   const { name, kind, x, y, width, height, fontSize } = graphNode;
   const ready = Boolean(node?.ready);
+  const canOpen = ready && kind !== "input";
   const color = rankColor(node?.rank ?? null);
   const fill = NODE_FILL[kind];
   const rankLabel =
@@ -737,7 +772,7 @@ const SvgNode = React.memo(function SvgNode({
       : "順位は未計算です";
 
   function open() {
-    if (node?.ready) onOpenNode(name, node);
+    if (node && canOpen) onOpenNode(name, node);
   }
 
   function onKeyDown(event: React.KeyboardEvent<SVGGElement>) {
@@ -753,9 +788,11 @@ const SvgNode = React.memo(function SvgNode({
 
   return (
     <g
-      className={`svgNode ${ready ? "ready" : "pending"} ${kind}`}
-      role={ready ? "button" : "img"}
-      tabIndex={ready ? 0 : undefined}
+      className={`svgNode ${ready ? "ready" : "pending"} ${
+        canOpen ? "interactive" : "static"
+      } ${kind}`}
+      role={canOpen ? "button" : "img"}
+      tabIndex={canOpen ? 0 : undefined}
       aria-label={ready ? `${name}、${rankLabel}` : `${name} は生成中`}
       style={{ "--rank-color": color } as React.CSSProperties}
       onClick={open}
@@ -795,44 +832,29 @@ function DetailModal({
   expected: string;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div className="modal" onClick={onClose}>
-      <div className="modalBody" onClick={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <p className="eyebrow">{detail.node}</p>
-            <h2>
-              {detail.rank ? `期待する単語「${expected}」: ${detail.rank} 位` : "ノードの詳細"}
-            </h2>
-          </div>
-          <button className="ghost closeButton" onClick={onClose} aria-label="閉じる">
-            ✕
-          </button>
-        </header>
-        <div className={detail.attention && detail.logits ? "detailGrid" : "detailGrid single"}>
-          {detail.attention && (
-            <figure>
-              <figcaption>注意パターン</figcaption>
-              <AttentionHeatmap data={detail.attention} />
-            </figure>
-          )}
-          {detail.logits && (
-            <figure>
-              <figcaption>予測ランキング</figcaption>
-              <LogitsRanking data={detail.logits} />
-            </figure>
-          )}
-        </div>
+    <ModalFrame
+      eyebrow={detail.node}
+      title={
+        detail.rank ? `期待する単語「${expected}」: ${detail.rank} 位` : "ノードの詳細"
+      }
+      onClose={onClose}
+    >
+      <div className={detail.attention && detail.logits ? "detailGrid" : "detailGrid single"}>
+        {detail.attention && (
+          <figure>
+            <figcaption>注意パターン</figcaption>
+            <AttentionHeatmap data={detail.attention} />
+          </figure>
+        )}
+        {detail.logits && (
+          <figure>
+            <figcaption>予測ランキング</figcaption>
+            <LogitsRanking data={detail.logits} />
+          </figure>
+        )}
       </div>
-    </div>
+    </ModalFrame>
   );
 }
 
@@ -971,48 +993,36 @@ function SampleModal({
   onSelect: (sample: PromptSample) => void;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div className="modal" onClick={onClose}>
-      <div className="modalBody sampleModalBody" onClick={(event) => event.stopPropagation()}>
-        <header>
-          <div>
-            <p className="eyebrow">Samples</p>
-            <h2>サンプルを選択</h2>
-            <p className="modal-note">
-              <span className="accentWord">この色のテキスト</span> が期待する次の単語です
-            </p>
-          </div>
-          <button className="ghost closeButton" onClick={onClose} aria-label="閉じる">
-            ✕
-          </button>
-        </header>
-        {isLoading ? (
-          <div className="waitingPanel">サンプル一覧を読み込み中です</div>
-        ) : (
-          <div className="sampleList">
-            {samples.map((sample) => (
-              <button
-                className="sampleItem"
-                key={`${sample.prompt}-${sample.expected_answer}`}
-                onClick={() => onSelect(sample)}
-              >
-                <span className="samplePrompt">
-                  {sample.prompt} <span className="accentWord">{sample.expected_answer}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+    <ModalFrame
+      eyebrow="Samples"
+      title="サンプルを選択"
+      bodyClassName="sampleModalBody"
+      headerExtra={
+        <p className="modal-note">
+          <span className="accentWord">この色のテキスト</span> が期待する次の単語です
+        </p>
+      }
+      onClose={onClose}
+    >
+      {isLoading ? (
+        <div className="waitingPanel">サンプル一覧を読み込み中です</div>
+      ) : (
+        <div className="sampleList">
+          {samples.map((sample) => (
+            <button
+              className="sampleItem"
+              key={`${sample.prompt}-${sample.expected_answer}`}
+              onClick={() => onSelect(sample)}
+            >
+              <span className="samplePrompt">
+                {sample.prompt} <span className="accentWord">{sample.expected_answer}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </ModalFrame>
   );
 }
 
