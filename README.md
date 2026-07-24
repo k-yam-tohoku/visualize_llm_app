@@ -37,9 +37,6 @@ cd visualize_llm_app
 uv sync
 ```
 
-`pygraphviz` のビルドで失敗する場合は，後述の「⚠️ インストール時の注意点」を参照してください．<br>
-Conda を使いたい場合は `environment_local.yml` も残しています（`conda env create -f environment_local.yml`）．
-
 ### 3. React + FastAPI 版の起動（開発）
 
 バックエンドを起動します．
@@ -76,35 +73,10 @@ uv run uvicorn backend:app --host 0.0.0.0 --port 8000
 - ビルド時は `frontend/.env.production` により，API 呼び出しが相対パス（同一オリジン）になります（CORS 不要）．
 - 解析ジョブはメモリ上，モデルはプロセスグローバルに保持されるため，**ワーカーは 1 のまま**（`--workers` を付けない）で運用してください．
 
-### 5. Streamlit 版の起動（任意）
-
-既存の Streamlit 版も比較用に残しています．
-
-```bash
-uv run streamlit run app.py
-```
-
-ブラウザが自動で開きます．<br>
-開かない場合は `Local URL:` に表示される URL を使用してください．
-
-### 6. アプリの終了
+### 5. アプリの終了
 
 各ターミナルで `Ctrl + C` を押して終了してください（ブラウザを閉じるだけでは終了されません）．
 
-
-## ⚠️ インストール時の注意点
-
-本アプリでは `pygraphviz` を使用してグラフ構造を描画していますが，このライブラリは環境によってインストール時にエラーが発生することがあります．<br>
-以下のような対処を試みてください：
-
-- Graphviz の本体を事前にインストールしておく（OS に応じて `brew install graphviz` や `apt install graphviz` など）
-- `pygraphviz` のビルドに失敗する場合は，以下のように明示的に include ディレクトリを指定してインストールを試みる
-
-```bash
-brew install graphviz
-export CFLAGS="-I$(brew --prefix graphviz)/include"
-export LDFLAGS="-L$(brew --prefix graphviz)/lib"
-```
 
 ## ▶️ アプリの使い方
 
@@ -130,32 +102,24 @@ export LDFLAGS="-L$(brew --prefix graphviz)/lib"
 ```
 .
 ├── backend.py               # FastAPI バックエンド（API ＋ ビルド済みフロントの配信）
-├── app.py                   # Streamlit 版のエントリーポイント
 ├── frontend/                # React + Vite フロントエンド
 │ ├── src/                   #   main.tsx（UI 本体）, styles.css
 │ ├── index.html
 │ ├── vite.config.ts
 │ ├── .env.production        #   本番ビルド用の API ベース（相対パス）
 │ └── package.json
-├── model.py                 # モデルのロードとキャッシュ（pygraphviz 使用）
-├── logits.py                # logit 関連の処理
-├── attention_pattern.py     # Attention Pattern の抽出と可視化（Streamlit 版）
-├── display_utils.py         # 描画用ユーティリティ関数（Streamlit 版）
+├── model.py                 # モデルのロードとキャッシュ
+├── logits.py                # 各コンポーネントの logit 計算
 ├── prompt.py                # プロンプト処理とランダム選択
 ├── data/
 │ ├── prompt_sample.csv      # ランダム選択用のプロンプトと回答
 │ └── README.md              # データセットの説明
 ├── docs/                    # デモ用ガイド（PDF）
-├── figures/                 # Streamlit 版の可視化画像を出力（自動生成）
+├── figures/samples/         # README 用のサンプル画像
 ├── pyproject.toml           # プロジェクト定義・依存関係（uv）
 ├── uv.lock                  # 依存関係のロックファイル
-├── environment_local.yml    # Conda 用の環境定義（任意）
-├── packages.txt             # system dependencies（pygraphviz 用）
-├── requirements.txt         # Streamlit Cloud 用パッケージ定義
 └── README.md                # 本ファイル
 ```
-
-※ `figures/` ディレクトリ内の可視化画像は GitHub 上には含まれず，Streamlit 版の実行時に自動生成されます（React 版はノード画像を生成しません）．
 
 ## ⚙️ 主なライブラリ
 
@@ -163,4 +127,3 @@ export LDFLAGS="-L$(brew --prefix graphviz)/lib"
 - 環境管理: uv
 - バックエンド: FastAPI / Uvicorn / TransformerLens (v2.16.1) / PyTorch (v2.7.1)
 - フロントエンド: React 18 / Vite 6 / TypeScript
-- Streamlit 版: Streamlit (>=1.47.1) / Matplotlib (v3.10.3) / PyGraphviz (>=1.14)

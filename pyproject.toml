@@ -1,11 +1,7 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "visualize-llm-app"
 version = "0.1.0"
-description = "Streamlit application for visualizing LLM internal operations"
+description = "FastAPI + React application for visualizing LLM internal operations"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -22,7 +18,6 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "matplotlib==3.10.3",
     "torch==2.7.1",
     "transformer-lens==2.16.1",
     "datasets==2.18.0",
@@ -30,9 +25,6 @@ dependencies = [
     "fastapi>=0.100.0",
     "uvicorn[standard]>=0.23.0",
     "python-multipart>=0.0.6",
-    "streamlit>=1.47.1",
-    "pygraphviz>=1.14",
-    "watchdog>=6.0.0",
 ]
 
 [project.urls]
@@ -40,11 +32,8 @@ Homepage = "https://github.com/Fukata-K/visualize_llm_app"
 Repository = "https://github.com/Fukata-K/visualize_llm_app"
 Issues = "https://github.com/Fukata-K/visualize_llm_app/issues"
 
-[project.scripts]
-visualize-llm = "app:main"
-
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest>=7.0.0",
     "black>=22.0.0",
     "isort>=5.0.0",
@@ -60,5 +49,7 @@ profile = "black"
 multi_line_output = 3
 line_length = 88
 
-[tool.hatch.build.targets.wheel]
-packages = ["."]
+# Application (not a distributable library): uv manages dependencies but does
+# not build/install this project itself into the environment.
+[tool.uv]
+package = false
