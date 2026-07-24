@@ -1,18 +1,7 @@
-import base64
-import os
-import tempfile
 import threading
 import uuid
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Literal
-
-os.environ.setdefault(
-    "MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "visualize_llm_matplotlib")
-)
-os.environ.setdefault(
-    "XDG_CACHE_HOME", os.path.join(tempfile.gettempdir(), "visualize_llm_cache")
-)
 
 import torch
 import uvicorn
@@ -22,14 +11,12 @@ from pydantic import BaseModel
 from transformer_lens import HookedTransformer
 from transformer_lens.utils import get_act_name
 
-from attention_pattern import _create_heatmap
-from logits import _compute_all_components_logits, _visualize_top_k_tokens
+from logits import _compute_all_components_logits
 from model import get_cache, get_output
 from prompt import check_answer_correctness, get_prompt_samples, get_random_prompt
 
 
 MODEL_NAME = "gpt2-small"
-JOB_ROOT = Path("figures/jobs")
 
 app = FastAPI(title="Visualize LLM API")
 app.add_middleware(
@@ -48,7 +35,6 @@ app.add_middleware(
 
 _model: HookedTransformer | None = None
 _model_lock = threading.Lock()
-_render_lock = threading.Lock()
 _jobs: dict[str, "AnalysisJob"] = {}
 _jobs_lock = threading.Lock()
 
@@ -96,12 +82,22 @@ class JobStatusResponse(BaseModel):
     nodes: dict[str, NodeStatus]
 
 
+class AttentionData(BaseModel):
+    tokens: list[str]
+    values: list[list[float]]
+
+
+class LogitsData(BaseModel):
+    tokens: list[str]
+    values: list[float]
+
+
 class NodeDetailResponse(BaseModel):
     node: str
     kind: Literal["input", "attention", "mlp", "output"]
     rank: int | None
-    attention_image: str | None = None
-    logits_image: str | None = None
+    attention: AttentionData | None = None
+    logits: LogitsData | None = None
 
 
 @dataclass
@@ -109,8 +105,8 @@ class NodeRecord:
     kind: Literal["input", "attention", "mlp", "output"]
     ready: bool = False
     rank: int | None = None
-    attention_path: str | None = None
-    logits_path: str | None = None
+    attention: AttentionData | None = None
+    logits: LogitsData | None = None
 
 
 @dataclass
@@ -154,15 +150,6 @@ def snapshot_job(job_id: str) -> AnalysisJob:
         return job
 
 
-def encode_image(path: str | None) -> str | None:
-    if path is None:
-        return None
-    image_path = Path(path)
-    if not image_path.exists():
-        return None
-    return base64.b64encode(image_path.read_bytes()).decode("ascii")
-
-
 def init_nodes(job: AnalysisJob, ranks: dict[str, int], n_layers: int, n_heads: int) -> None:
     nodes: dict[str, NodeRecord] = {
         "Input": NodeRecord(kind="input", ready=True, rank=ranks.get("Input"))
@@ -177,13 +164,16 @@ def init_nodes(job: AnalysisJob, ranks: dict[str, int], n_layers: int, n_heads: 
     job.nodes = nodes
 
 
-def mark_node_ready(job_id: str, node_name: str, **paths: str) -> None:
+def mark_node_ready(
+    job_id: str,
+    node_name: str,
+    attention: AttentionData | None = None,
+    logits: LogitsData | None = None,
+) -> None:
     with _jobs_lock:
         node = _jobs[job_id].nodes[node_name]
-        if "attention_path" in paths:
-            node.attention_path = paths["attention_path"]
-        if "logits_path" in paths:
-            node.logits_path = paths["logits_path"]
+        node.attention = attention
+        node.logits = logits
         node.ready = True
 
 
@@ -199,11 +189,6 @@ def run_analysis(job_id: str) -> None:
         update_job(job_id, state="running", current_step="モデルを読み込み中")
         model = load_model()
         job = snapshot_job(job_id)
-        job_dir = JOB_ROOT / job_id
-        attention_dir = job_dir / "attention_patterns"
-        logits_dir = job_dir / "logits"
-        attention_dir.mkdir(parents=True, exist_ok=True)
-        logits_dir.mkdir(parents=True, exist_ok=True)
 
         update_job(job_id, current_step="入力を解析中")
         logits, cache = get_cache(model, job.prompt)
@@ -227,60 +212,51 @@ def run_analysis(job_id: str) -> None:
             init_nodes(current, ranks, n_layers, n_heads)
 
         tokens = [token.replace(" ", "_") for token in model.to_str_tokens(job.prompt, prepend_bos=False)]
-        tick_positions = list(range(len(tokens)))
 
         update_job(
             job_id,
-            current_step="各画像を生成中（明るくなったところはクリックできます）",
+            current_step="各データを生成中（明るくなったところはクリックできます）",
         )
         for layer in reversed(range(n_layers)):
-            mlp_path = logits_dir / f"L{layer:02d}.png"
-            with _render_lock:
-                _visualize_top_k_tokens(
-                    layer_logits[layer],
-                    model,
-                    top_k=10,
-                    title=f"Layer {layer} Logits",
-                    save_path=str(mlp_path),
-                )
-            mark_node_ready(job_id, f"MLP{layer}", logits_path=str(mlp_path))
+            layer_detail = top_logits_data(layer_logits[layer], model)
+            mark_node_ready(job_id, f"MLP{layer}", logits=layer_detail)
 
             if layer == n_layers - 1:
-                mark_node_ready(job_id, "Output", logits_path=str(mlp_path))
+                mark_node_ready(job_id, "Output", logits=layer_detail)
 
         for layer in reversed(range(n_layers)):
             layer_key = get_act_name("attn", layer)
             layer_attn = cache[layer_key][0].detach().cpu().numpy()
 
             for head in range(n_heads):
-                attention_path = attention_dir / f"L{layer:02d}_H{head:02d}.png"
-                logits_path = logits_dir / f"L{layer:02d}_H{head:02d}.png"
-                with _render_lock:
-                    _create_heatmap(
-                        layer_attn[head],
-                        layer,
-                        head,
-                        tokens,
-                        tick_positions,
-                        str(attention_path),
-                    )
-                    _visualize_top_k_tokens(
-                        head_logits[layer, head],
-                        model,
-                        top_k=10,
-                        title=f"Layer {layer} Head {head} Logits",
-                        save_path=str(logits_path),
-                    )
                 mark_node_ready(
                     job_id,
                     f"A{layer}.H{head}",
-                    attention_path=str(attention_path),
-                    logits_path=str(logits_path),
+                    attention=AttentionData(
+                        tokens=tokens,
+                        values=round_matrix(layer_attn[head]),
+                    ),
+                    logits=top_logits_data(head_logits[layer, head], model),
                 )
 
-        update_job(job_id, state="completed", current_step="完了")
+        update_job(job_id, state="completed", current_step="予測完了")
     except Exception as exc:
         update_job(job_id, state="failed", current_step="失敗", error=str(exc))
+
+
+def round_matrix(values, digits: int = 4) -> list[list[float]]:
+    return [[round(float(value), digits) for value in row] for row in values]
+
+
+def top_logits_data(
+    values: torch.Tensor, model: HookedTransformer, top_k: int = 10
+) -> LogitsData:
+    top_values, top_indices = torch.topk(values.detach().cpu(), k=top_k)
+    tokens = [model.tokenizer.decode([int(index)]).replace(" ", "_") for index in top_indices]
+    return LogitsData(
+        tokens=tokens,
+        values=[round(float(value), 4) for value in top_values],
+    )
 
 
 def calculate_ranks(
@@ -392,8 +368,8 @@ def node_detail(job_id: str, node_name: str) -> NodeDetailResponse:
         node=node_name,
         kind=node.kind,
         rank=node.rank,
-        attention_image=encode_image(node.attention_path),
-        logits_image=encode_image(node.logits_path),
+        attention=node.attention,
+        logits=node.logits,
     )
 
 

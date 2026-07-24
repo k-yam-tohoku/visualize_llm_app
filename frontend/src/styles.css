@@ -1,13 +1,89 @@
+/* =========================================================================
+   Design tokens — from pre-design-md (blue-led, muted, reader-friendly).
+   Light theme; the model stage uses a dark primary tint so the rank glow
+   and node colors read clearly.
+   ========================================================================= */
 :root {
-  color: #17202a;
-  background: #f5f7fb;
-  font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
+  /* Primary (blue-led, vivid) */
+  --primary: #3a82c9;
+  --primary-50: #f1f7fd;
+  --primary-100: #e0eefb;
+  --primary-200: #c0ddf6;
+  --primary-300: #93c3ef;
+  --primary-400: #5ea3e1;
+  --primary-500: #3a82c9;
+  --primary-600: #2c66a6;
+  --primary-700: #274f7c;
+  --primary-800: #213f5f;
+  --primary-900: #13293f;
+  --primary-950: #0a1927;
+
+  /* Neutrals */
+  --neutral-50: #f9fafb;
+  --neutral-100: #f0f2f3;
+  --neutral-200: #dbdee0;
+  --neutral-300: #c1c5c7;
+  --neutral-400: #a1a5a8;
+  --neutral-500: #82878a;
+  --neutral-600: #656a6c;
+  --neutral-700: #4a4e50;
+  --neutral-800: #313335;
+  --neutral-900: #191b1c;
+  --neutral-950: #0a0b0c;
+
+  /* Semantic */
+  --success: #6b8a6b;
+  --warning: #b8a17c;
+  --danger: #a0736f;
+  --info: #61859f;
+
+  /* Typography */
+  --font-sans: "Noto Sans JP", "Hiragino Kaku Gothic ProN", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Spacing (base 4px, linear) */
+  --sp-2xs: 2px;
+  --sp-xs: 4px;
+  --sp-sm: 6px;
+  --sp-md: 8px;
+  --sp-lg: 12px;
+  --sp-xl: 16px;
+  --sp-2xl: 24px;
+  --sp-3xl: 32px;
+  --sp-4xl: 48px;
+  --sp-5xl: 64px;
+
+  /* Radius */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-full: 9999px;
+
+  /* Shadow (tinted by primary hue) */
+  --shadow-sm: 0 1px 2px 0 oklch(25% 0.08 235 / 0.06);
+  --shadow-md: 0 4px 6px -1px oklch(25% 0.08 235 / 0.08),
+    0 2px 4px -2px oklch(25% 0.08 235 / 0.08);
+  --shadow-lg: 0 10px 15px -3px oklch(25% 0.08 235 / 0.1),
+    0 4px 6px -4px oklch(25% 0.08 235 / 0.1);
+  --shadow-xl: 0 20px 25px -5px oklch(25% 0.08 235 / 0.12),
+    0 8px 10px -6px oklch(25% 0.08 235 / 0.12);
+
+  color: var(--neutral-900);
+  background: var(--neutral-100);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
   box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
 }
 
 body {
@@ -17,234 +93,368 @@ body {
 button,
 input {
   font: inherit;
+  color: inherit;
 }
 
-main {
-  min-height: 100vh;
-}
-
-.intro {
-  display: grid;
-  grid-template-columns: minmax(240px, 0.55fr) minmax(420px, 1fr);
-  gap: 24px;
-  align-items: center;
-  padding: 18px clamp(16px, 4vw, 56px);
-  background: #0d1117;
-  color: white;
+/* =========================================================================
+   App shell — one viewport tall, scrolls internally when needed. The stage
+   flexes to fill; when its comfortable min-height (set per model) exceeds the
+   available space — e.g. a short landscape monitor — the shell grows past the
+   viewport and the app scrolls vertically, giving the graph relaxed spacing.
+   In portrait it fits and does not scroll.
+   ========================================================================= */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--neutral-100);
 }
 
 .eyebrow {
-  margin: 0 0 8px;
-  color: #6ca4ff;
-  font-size: 12px;
+  margin: 0;
+  color: var(--primary-600);
+  font-size: 0.6875rem;
   font-weight: 700;
-  letter-spacing: 0;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
-h1,
-h2 {
-  margin: 0;
-  letter-spacing: 0;
-}
-
-h1 {
-  max-width: 520px;
-  font-size: clamp(24px, 3vw, 38px);
-  line-height: 1.08;
-}
-
-h2 {
-  font-size: 22px;
-}
-
-.controls {
-  display: grid;
-  gap: 10px;
-}
-
-label {
-  display: grid;
-  grid-template-columns: 148px minmax(0, 1fr);
-  gap: 12px;
+/* ---- Top bar (light theme) --------------------------------------------- */
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  color: #d8dee9;
-  font-size: 14px;
+  gap: var(--sp-xl) var(--sp-2xl);
+  padding: var(--sp-lg) clamp(var(--sp-xl), 2.4vw, var(--sp-4xl));
+  background: var(--neutral-50);
+  color: var(--neutral-900);
+  border-bottom: 1px solid var(--neutral-200);
+  box-shadow: var(--shadow-sm);
+  z-index: 3;
+}
+
+.brand {
+  flex-shrink: 0;
+}
+
+.brand .eyebrow {
+  color: var(--primary-600);
+}
+
+.brand h1 {
+  margin: 2px 0 0;
+  font-size: 1.1875rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: var(--neutral-900);
+}
+
+.modal-note {
+  margin: var(--sp-sm) 0 0;
+  font-size: 0.875rem;
+  color: var(--neutral-600);
+}
+
+/* Accent used for the predicted "next word" (matches the app's primary hue). */
+.accentWord {
+  color: var(--primary-600);
   font-weight: 700;
 }
 
-input {
+/* ---- Controls ----------------------------------------------------------- */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-lg);
+  flex: 1 1 460px;
+  min-width: 0;
+}
+
+.field {
+  display: grid;
+  gap: var(--sp-xs);
+  min-width: 0;
+}
+
+.field.grow {
+  flex: 1 1 260px;
+}
+
+.field.narrow {
+  flex: 0 1 170px;
+}
+
+.field label {
+  color: var(--neutral-600);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.field input {
   width: 100%;
-  min-height: 38px;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  background: #161b22;
-  color: white;
-  padding: 8px 12px;
+  height: 40px;
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--r-sm);
+  background: #fff;
+  color: var(--neutral-900);
+  padding: 0 var(--sp-lg);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.field input::placeholder {
+  color: var(--neutral-400);
+}
+
+.field input:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-color: var(--primary);
 }
 
 .actions {
   display: flex;
-  gap: 12px;
-  justify-content: flex-end;
+  gap: var(--sp-md);
+  flex-shrink: 0;
 }
 
 button {
-  min-height: 36px;
-  border: 1px solid #c8d1dc;
-  border-radius: 6px;
-  background: #ffffff;
-  color: #17202a;
-  padding: 7px 14px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-xs);
+  border: 1px solid var(--neutral-300);
+  border-radius: var(--r-md);
+  background: var(--neutral-50);
+  color: var(--neutral-800);
+  padding: 0 var(--sp-xl);
+  font-weight: 500;
   cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: background 140ms ease, border-color 140ms ease,
+    transform 80ms ease, box-shadow 140ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--neutral-100);
+}
+
+button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--primary-300);
+  outline-offset: 2px;
 }
 
 button:disabled {
+  opacity: 0.4;
   cursor: default;
 }
 
+.ghost {
+  background: var(--primary-100);
+  border-color: var(--primary-300);
+  color: var(--primary-700);
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--primary-200);
+  border-color: var(--primary-400);
+}
+
 .primary {
-  border-color: #1f6feb;
-  background: #1f6feb;
-  color: #ffffff;
-  font-weight: 800;
-}
-
-.notice,
-.error,
-.waitingPanel {
-  margin: 18px clamp(16px, 4vw, 56px);
-  border-radius: 6px;
-  padding: 14px 16px;
-}
-
-.notice,
-.waitingPanel {
-  background: #e8f1ff;
-  color: #17365d;
-}
-
-.error {
-  background: #ffe9e9;
-  color: #7d1616;
-}
-
-.analysis {
-  padding: clamp(14px, 2.4vh, 24px) clamp(16px, 4vw, 56px)
-    clamp(8px, 2vh, 32px);
-}
-
-.statusBar {
-  display: flex;
-  gap: 20px;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.prediction {
-  display: grid;
-  gap: 4px;
-  min-width: 180px;
-  border-left: 4px solid #6ca4ff;
-  padding-left: 14px;
-}
-
-.prediction span {
-  color: #5f6b7a;
-  font-size: 12px;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
   font-weight: 700;
 }
 
+.primary:hover:not(:disabled) {
+  background: var(--primary-600);
+  border-color: var(--primary-600);
+}
+
+.primary:active:not(:disabled) {
+  background: var(--primary-700);
+  border-color: var(--primary-700);
+}
+
+/* ---- Prediction readout ------------------------------------------------- */
+.prediction {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--sp-sm);
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.prediction-label {
+  color: var(--neutral-600);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
 .prediction strong {
-  font-size: 24px;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--neutral-900);
+  font-family: var(--font-mono);
 }
 
-.right {
-  color: #16833a;
+/* Correct -> main color, incorrect -> red. */
+.prediction strong.right {
+  color: var(--primary-600);
 }
 
-.wrong {
-  color: #bc2f2f;
+.prediction strong.wrong {
+  color: #c0453f;
 }
 
-.progressTrack {
-  height: 10px;
-  border-radius: 999px;
-  background: #d9e1ec;
+/* ---- Status strip ------------------------------------------------------- */
+.statusStrip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xl);
+  padding: var(--sp-md) clamp(var(--sp-xl), 2.4vw, var(--sp-4xl));
+  background: var(--neutral-50);
+  border-bottom: 1px solid var(--neutral-200);
+  z-index: 2;
+}
+
+.status-step {
+  margin: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--neutral-700);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.progressTrack div {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #1f6feb, #2da44e);
-  transition: width 200ms ease;
-}
-
-.progressText {
-  color: #5f6b7a;
-  font-size: 13px;
-  margin: 8px 0 clamp(8px, 1.8vh, 18px);
+/* ---- Stage / graph ------------------------------------------------------ */
+.stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: clamp(var(--sp-md), 1.6vh, var(--sp-2xl))
+    clamp(var(--sp-xl), 2.4vw, var(--sp-4xl));
+  background: var(--neutral-100);
 }
 
 .graphShell {
-  max-height: 76vh;
-  overflow: auto;
-  border: 1px solid #d6dee9;
-  border-radius: 8px;
-  background: #000000;
-  padding: 12px;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--r-lg);
+  background: radial-gradient(
+      130% 120% at 50% 0%,
+      var(--primary-900),
+      var(--primary-950) 70%
+    );
+  box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  overflow: hidden;
 }
 
 .modelSvg {
   display: block;
-  width: max(100%, 1120px);
-  min-height: 680px;
+  width: 100%;
+  height: 100%;
 }
 
-@media (orientation: portrait) and (min-height: 900px) {
-  .analysis {
-    padding-top: 12px;
-    padding-bottom: 12px;
-  }
-
-  .statusBar {
-    margin-bottom: 10px;
-  }
-
-  .progressText {
-    margin-bottom: 10px;
-  }
-
-  .graphShell {
-    height: calc(100vh - 230px);
-    max-height: none;
-    overflow: hidden;
-  }
-
-  .modelSvg {
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-  }
+.stagePlaceholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: var(--sp-md);
+  text-align: center;
+  padding: var(--sp-3xl);
+  color: var(--primary-200);
 }
 
+.stagePlaceholder .big {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--neutral-100);
+}
+
+.stagePlaceholder .sub {
+  font-size: 0.9375rem;
+  color: var(--primary-300);
+}
+
+.stageError {
+  position: absolute;
+  inset: auto 0 0 0;
+  margin: var(--sp-xl);
+  border-radius: var(--r-md);
+  background: rgba(160, 115, 111, 0.16);
+  border: 1px solid var(--danger);
+  color: #e8c9c6;
+  padding: var(--sp-lg) var(--sp-xl);
+  font-size: 0.9375rem;
+}
+
+/* ---- Legend overlay ----------------------------------------------------- */
+.legend {
+  position: absolute;
+  left: var(--sp-xl);
+  bottom: var(--sp-xl);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-md) var(--sp-xl);
+  max-width: 70%;
+  padding: var(--sp-md) var(--sp-lg);
+  border-radius: var(--r-md);
+  background: rgba(3, 13, 19, 0.62);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--primary-100);
+  font-size: 0.75rem;
+  pointer-events: none;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-sm);
+}
+
+.legend-gradient {
+  flex-shrink: 0;
+  width: 56px;
+  height: 10px;
+  border-radius: var(--r-full);
+  background: linear-gradient(90deg, rgb(96, 132, 156), rgb(40, 224, 122));
+}
+
+/* ---- SVG nodes & edges -------------------------------------------------- */
 .edge {
   fill: none;
   stroke-linecap: round;
-  stroke-width: 3;
-  transition:
-    opacity 160ms ease,
-    stroke-width 160ms ease;
+  transition: opacity 200ms ease, stroke-width 160ms ease;
 }
 
 .edge.pending {
-  opacity: 0.14;
+  opacity: 0.1;
 }
 
 .edge.ready {
-  opacity: 0.72;
+  opacity: 0.6;
 }
 
 .svgNode {
@@ -252,18 +462,13 @@ button:disabled {
 }
 
 .svgNode rect {
-  stroke-width: 7;
-  transition:
-    filter 140ms ease,
-    opacity 140ms ease,
-    stroke-width 140ms ease,
-    transform 140ms ease;
+  transition: filter 160ms ease, opacity 160ms ease, stroke-width 160ms ease;
 }
 
 .svgNode text {
-  fill: #111827;
-  font-size: 17px;
-  font-weight: 800;
+  fill: var(--neutral-900);
+  font-family: "Noto Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
   pointer-events: none;
 }
 
@@ -273,109 +478,123 @@ button:disabled {
 
 .svgNode.pending {
   cursor: default;
-  opacity: 0.42;
+  opacity: 0.32;
 }
 
 .svgNode.ready:hover rect,
 .svgNode.ready:focus-visible rect {
-  filter: drop-shadow(0 0 9px var(--rank-color));
-  stroke-width: 9;
+  filter: drop-shadow(0 0 10px var(--rank-color));
 }
 
-.svgNode.ready:hover + .edge,
-.svgNode.ready:focus-visible + .edge {
-  stroke-width: 4;
+/* ---- Custom tooltip (graph nodes & attention cells) --------------------- */
+.tooltip {
+  position: fixed;
+  z-index: 60;
+  display: grid;
+  gap: 3px;
+  max-width: 300px;
+  padding: var(--sp-sm) var(--sp-lg);
+  border-radius: var(--r-md);
+  background: linear-gradient(180deg, var(--primary-900), var(--primary-950));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  animation: tooltipIn 90ms ease-out;
 }
 
+.tooltip .tip-name {
+  font-family: "Noto Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--primary-300);
+}
+
+.tooltip .tip-detail {
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: var(--neutral-50);
+}
+
+.tooltip .tip-rank {
+  font-family: "Noto Sans Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 700;
+  color: #7fe3a6;
+}
+
+@keyframes tooltipIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* =========================================================================
+   Modal
+   ========================================================================= */
 .modal {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  z-index: 40;
   display: grid;
   place-items: center;
-  background: rgba(8, 12, 18, 0.78);
-  padding: 24px;
+  background: rgba(3, 13, 19, 0.66);
+  backdrop-filter: blur(3px);
+  padding: clamp(var(--sp-xl), 4vh, var(--sp-4xl));
 }
 
 .modalBody {
   width: min(1120px, 96vw);
   max-height: 92vh;
   overflow: auto;
-  border-radius: 8px;
-  background: white;
-  padding: 18px;
+  border-radius: var(--r-lg);
+  background: var(--neutral-50);
+  box-shadow: var(--shadow-xl);
+  padding: var(--sp-2xl);
 }
 
 .sampleModalBody {
-  width: min(840px, 96vw);
+  width: min(860px, 96vw);
 }
 
 .modalBody header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
+  gap: var(--sp-xl);
+  margin-bottom: var(--sp-xl);
 }
 
-.modalBody header button {
+.modalBody header h2 {
+  margin: var(--sp-2xs) 0 0;
+  font-size: 1.4238rem;
+  font-weight: 700;
+  color: var(--neutral-900);
+}
+
+.modalBody header .eyebrow {
+  color: var(--primary-600);
+}
+
+.closeButton {
   width: 40px;
+  height: 40px;
   padding: 0;
-  font-size: 22px;
+  border-radius: var(--r-md);
+  font-size: 1.25rem;
+  line-height: 1;
 }
 
-.imageGrid {
+.detailGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--sp-xl);
 }
 
-.imageGrid.single {
+.detailGrid.single {
   grid-template-columns: minmax(0, 1fr);
-}
-
-.sampleList {
-  display: grid;
-  gap: 10px;
-}
-
-.sampleItem {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-  min-height: 72px;
-  border-color: #d6dee9;
-  background: #f8fafc;
-  padding: 12px 14px;
-  text-align: left;
-}
-
-.sampleItem:hover,
-.sampleItem:focus-visible {
-  border-color: #1f6feb;
-  background: #eef6ff;
-}
-
-.sampleSubject {
-  color: #17202a;
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.samplePrompt {
-  color: #344255;
-  font-size: 14px;
-  overflow-wrap: anywhere;
-}
-
-.sampleMeta {
-  color: #66758a;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.compact {
-  margin: 0;
 }
 
 figure {
@@ -383,41 +602,155 @@ figure {
 }
 
 figcaption {
-  margin-bottom: 8px;
-  color: #4f5b68;
-  font-size: 14px;
-  font-weight: 800;
+  margin-bottom: var(--sp-md);
+  color: var(--neutral-700);
+  font-size: 0.9375rem;
+  font-weight: 700;
 }
 
-img {
+/* ---- Attention heatmap -------------------------------------------------- */
+.heatmapScroll {
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--r-md);
+  background: var(--neutral-50);
+  padding: var(--sp-md);
+}
+
+.attentionSvg {
   display: block;
+  min-width: 420px;
+  min-height: 420px;
+}
+
+.heatmapLabel text {
+  fill: var(--neutral-600);
+  font-size: 10px;
+  font-family: var(--font-mono);
+}
+
+/* ---- Logits ranking ----------------------------------------------------- */
+.logitsList {
+  display: grid;
+  gap: var(--sp-md);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--r-md);
+  padding: var(--sp-xl);
+  background: var(--neutral-50);
+}
+
+.logitRow {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.45fr) minmax(120px, 1fr) 56px;
+  gap: var(--sp-md);
+  align-items: center;
+  min-height: 24px;
+}
+
+.logitToken,
+.logitValue {
+  color: var(--neutral-800);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logitValue {
+  text-align: right;
+  color: var(--neutral-600);
+}
+
+.logitBarTrack {
+  height: 14px;
+  overflow: hidden;
+  border-radius: var(--r-sm);
+  background: var(--primary-100);
+}
+
+.logitBar {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary-400), var(--primary-600));
+}
+
+/* ---- Sample picker ------------------------------------------------------ */
+.sampleList {
+  display: grid;
+  gap: var(--sp-md);
+}
+
+.sampleItem {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-xs);
   width: 100%;
   height: auto;
-  border: 1px solid #d6dee9;
-  border-radius: 6px;
+  border-color: var(--neutral-200);
+  background: var(--neutral-50);
+  padding: var(--sp-lg) var(--sp-xl);
+  text-align: left;
+  box-shadow: none;
 }
 
-@media (max-width: 760px) {
-  .intro,
-  .statusBar,
-  .imageGrid {
-    grid-template-columns: 1fr;
+.sampleItem:hover,
+.sampleItem:focus-visible {
+  border-color: var(--primary);
+  background: var(--primary-50);
+}
+
+.samplePrompt {
+  color: var(--neutral-900);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.waitingPanel {
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4xl);
+  color: var(--neutral-600);
+  font-size: 0.9375rem;
+}
+
+/* =========================================================================
+   Toast notice
+   ========================================================================= */
+.toast {
+  position: fixed;
+  top: var(--sp-xl);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  max-width: min(560px, 92vw);
+  border-radius: var(--r-md);
+  background: var(--neutral-900);
+  color: var(--neutral-50);
+  padding: var(--sp-lg) var(--sp-xl);
+  font-size: 0.9375rem;
+  box-shadow: var(--shadow-lg);
+}
+
+/* =========================================================================
+   Portrait (pivoted monitor): trim chrome so the whole graph fits vertically.
+   ========================================================================= */
+@media (orientation: portrait) {
+  .topbar {
+    gap: var(--sp-md) var(--sp-xl);
+    padding-top: var(--sp-md);
+    padding-bottom: var(--sp-md);
   }
 
-  .statusBar {
-    display: grid;
+  .brand h1 {
+    font-size: 1.0625rem;
   }
 
-  .actions {
-    justify-content: stretch;
-  }
-
-  .actions button {
-    flex: 1;
-  }
-
-  label {
-    grid-template-columns: 1fr;
-    gap: 8px;
+  .stage {
+    padding-top: var(--sp-md);
+    padding-bottom: var(--sp-md);
   }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -31,8 +31,18 @@ type NodeDetail = {
   node: string;
   kind: NodeKind;
   rank: number | null;
-  attention_image: string | null;
-  logits_image: string | null;
+  attention: AttentionData | null;
+  logits: LogitsData | null;
+};
+
+type AttentionData = {
+  tokens: string[];
+  values: number[][];
+};
+
+type LogitsData = {
+  tokens: string[];
+  values: number[];
 };
 
 type PromptSample = {
@@ -44,20 +54,69 @@ type PromptSample = {
 
 type GraphNode = {
   name: string;
-  node?: NodeStatus;
+  kind: NodeKind;
   x: number;
   y: number;
   width: number;
   height: number;
+  fontSize: number;
+};
+
+type GraphLayout = {
+  width: number;
+  height: number;
+  nodes: GraphNode[];
+  edges: Array<[string, string]>;
+  strokeWidth: number;
 };
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.max(min, Math.min(max, value));
+
+// Rank -> color. Vivid green means the expected token ranks near the top at
+// this node; it fades to a cool slate-blue when the token is far down (or
+// unknown). Kept saturated so the node borders read clearly on the dark stage.
 function rankColor(rank: number | null, vocabThreshold = 5025) {
-  if (rank === null || rank >= vocabThreshold) return "#ffffff";
-  const normalized = Math.log(rank + 1e-8) / Math.log(vocabThreshold + 1e-8);
-  const channel = Math.max(0, Math.min(255, Math.round(255 * normalized)));
-  return `rgb(${channel}, 255, ${channel})`;
+  const dim: [number, number, number] = [96, 132, 156];
+  const bright: [number, number, number] = [40, 224, 122];
+  if (rank === null || rank >= vocabThreshold) {
+    return `rgb(${dim[0]}, ${dim[1]}, ${dim[2]})`;
+  }
+  const t = clamp(
+    Math.log(rank + 1e-8) / Math.log(vocabThreshold + 1e-8),
+    0,
+    1,
+  );
+  const c = bright.map((b, i) => Math.round(b + (dim[i] - b) * t));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+const NODE_FILL: Record<NodeKind, string> = {
+  input: "#d3dade",
+  attention: "#dceaf4",
+  mlp: "#e0ebe0",
+  output: "#f2e6cf",
+};
+
+// Observe an element's rendered size so the graph can fill it exactly.
+function useElementSize<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    const observer = new ResizeObserver((entries) => {
+      const rect = entries[0].contentRect;
+      setSize({ width: rect.width, height: rect.height });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
+  return [ref, size] as const;
 }
 
 function App() {
@@ -75,26 +134,33 @@ function App() {
   useEffect(() => {
     if (!jobId) return;
     let cancelled = false;
+    let intervalId: number | undefined;
 
     async function poll() {
       const response = await fetch(`${API_BASE}/api/jobs/${jobId}`);
       if (!response.ok) return;
       const nextStatus = (await response.json()) as JobStatus;
-      if (!cancelled) setStatus(nextStatus);
+      if (cancelled) return;
+      setStatus(nextStatus);
+      // The job is immutable once it reaches a terminal state, so stop polling.
+      if (nextStatus.state === "completed" || nextStatus.state === "failed") {
+        if (intervalId !== undefined) window.clearInterval(intervalId);
+      }
     }
 
     poll();
-    const intervalId = window.setInterval(poll, 1200);
+    intervalId = window.setInterval(poll, 1200);
     return () => {
       cancelled = true;
-      window.clearInterval(intervalId);
+      if (intervalId !== undefined) window.clearInterval(intervalId);
     };
   }, [jobId]);
 
-  const progress = useMemo(() => {
-    if (!status?.total_nodes) return 0;
-    return Math.round((status.completed_nodes / status.total_nodes) * 100);
-  }, [status]);
+  useEffect(() => {
+    if (!message) return;
+    const timeoutId = window.setTimeout(() => setMessage(null), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [message]);
 
   async function startAnalysis(event: React.FormEvent) {
     event.preventDefault();
@@ -173,82 +239,104 @@ function App() {
     setSelected((await response.json()) as NodeDetail);
   }
 
+  const hasModel = Boolean(status?.n_layers && status?.n_heads);
+  const predictionClass =
+    status?.is_correct === true ? "right" : status?.is_correct === false ? "wrong" : "";
+
+  // Give the graph a comfortable minimum height (~one row per level). On a short
+  // landscape monitor this exceeds the viewport, so the page scrolls with roomy
+  // spacing; on a tall portrait monitor it fits and the stage simply fills.
+  const stageStyle =
+    hasModel && status?.n_layers
+      ? { minHeight: (2 + 2 * status.n_layers) * 52 + 40 }
+      : undefined;
+
   return (
-    <main>
-      <section className="intro">
-        <div>
+    <div className="app">
+      <header className="topbar">
+        <div className="brand">
           <p className="eyebrow">Visualize LLM Demo</p>
           <h1>次の単語を予測する仕組み</h1>
         </div>
+
         <form className="controls" onSubmit={startAnalysis}>
-          <label>
-            入力
-            <input value={prompt} onChange={(event) => setPrompt(event.target.value)} />
-          </label>
-          <label>
-            期待する次の単語
+          <div className="field grow">
+            <label htmlFor="prompt-input">入力</label>
             <input
+              id="prompt-input"
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              autoComplete="off"
+            />
+          </div>
+          <div className="field narrow">
+            <label htmlFor="answer-input">期待する次の単語</label>
+            <input
+              id="answer-input"
               value={expectedAnswer}
               onChange={(event) => setExpectedAnswer(event.target.value)}
+              autoComplete="off"
             />
-          </label>
+          </div>
           <div className="actions">
-            <button type="button" onClick={fillRandomPrompt}>
-              Random Sample
-            </button>
-            <button type="button" onClick={openSamples}>
-              Show Samples
-            </button>
             <button type="submit" className="primary" disabled={isStarting || !prompt.trim()}>
-              {isStarting ? "Starting..." : "Go"}
+              {isStarting ? "Starting…" : "Go"}
+            </button>
+            <button type="button" className="ghost" onClick={fillRandomPrompt}>
+              Random
+            </button>
+            <button type="button" className="ghost" onClick={openSamples}>
+              Samples
             </button>
           </div>
         </form>
-      </section>
+      </header>
 
-      {message && <div className="notice">{message}</div>}
-
-      <section className="analysis">
-        <header className="statusBar">
-          <div>
-            <p className="eyebrow">Status</p>
-            <h2>
-              {status
-                ? status.current_step
-                : "次の単語を予測する文と、期待する単語を入力して Go ボタンを押してください"}
-            </h2>
-          </div>
-          {status && (
-            <div className="prediction">
-              <span>AI の予測</span>
-              <strong className={status.is_correct === false ? "wrong" : "right"}>
-                {status.output ?? "..."}
-              </strong>
-            </div>
-          )}
-        </header>
-
+      <div className="statusStrip">
+        <p className="status-step">
+          {status
+            ? status.current_step
+            : "文と期待する次の単語を入力して Go を押してください"}
+        </p>
         {status && (
-          <>
-          <div className="progressTrack" aria-label={`解析進捗 ${progress}%`}>
-            <div style={{ width: `${progress}%` }} />
-          </div>
-          <p className="progressText">
-            {status.completed_nodes} / {status.total_nodes ?? "..."} nodes ready
+          <p className="prediction">
+            <span className="prediction-label">AI の予測</span>
+            <strong className={predictionClass}>{status.output ?? "…"}</strong>
           </p>
-
-          {status.n_layers && status.n_heads ? (
-            <ModelGraph status={status} onOpenNode={openNode} />
-          ) : (
-            <div className="waitingPanel">モデル構造を準備中です</div>
-          )}
-
-          {status.state === "failed" && <div className="error">{status.error}</div>}
-          </>
         )}
-      </section>
+      </div>
 
-      {selected && <ImageModal detail={selected} onClose={() => setSelected(null)} />}
+      <main className="stage" style={stageStyle}>
+        {hasModel && status ? (
+          <ModelGraph status={status} onOpenNode={openNode} />
+        ) : (
+          <div className="graphShell">
+            <div className="stagePlaceholder">
+              <p className="big">
+                {status ? "モデル構造を準備中です" : "INPUT から OUTPUT までの流れを可視化します"}
+              </p>
+              <p className="sub">
+                {status
+                  ? status.current_step
+                  : "Transformer の各層が、期待する単語をどれだけ予測できているかを表示します"}
+              </p>
+            </div>
+          </div>
+        )}
+        {status?.state === "failed" && status.error && (
+          <div className="stageError">{status.error}</div>
+        )}
+      </main>
+
+      {message && <div className="toast">{message}</div>}
+
+      {selected && (
+        <DetailModal
+          detail={selected}
+          expected={status?.expected_answer ?? ""}
+          onClose={() => setSelected(null)}
+        />
+      )}
       {isSamplesOpen && (
         <SampleModal
           samples={samples}
@@ -257,8 +345,111 @@ function App() {
           onClose={() => setIsSamplesOpen(false)}
         />
       )}
-    </main>
+    </div>
   );
+}
+
+// Build a layout that fills the given box: layers are distributed across the
+// full height (INPUT bottom, OUTPUT top — all visible) and attention heads
+// spread across the full width. Works for any container aspect ratio, so a
+// landscape monitor uses the width and a pivoted monitor uses the height.
+function computeLayout(
+  nLayers: number,
+  nHeads: number,
+  width: number,
+  height: number,
+): GraphLayout | null {
+  if (!width || !height || nLayers <= 0 || nHeads <= 0) return null;
+
+  const padX = clamp(width * 0.03, 24, 96);
+  const padTop = clamp(height * 0.05, 18, 56);
+  // Reserve room at the bottom for the legend overlay so the Input node,
+  // which sits centered on the last row, never collides with it.
+  const padBottom = padTop + 44;
+
+  // Ordered vertical levels, top -> bottom.
+  type Level =
+    | { kind: "output" | "input"; name: string }
+    | { kind: "mlp"; name: string; layer: number }
+    | { kind: "attn"; layer: number };
+
+  const levels: Level[] = [{ kind: "output", name: "Output" }];
+  for (let visualIndex = 0; visualIndex < nLayers; visualIndex += 1) {
+    const layer = nLayers - 1 - visualIndex;
+    levels.push({ kind: "mlp", name: `MLP${layer}`, layer });
+    levels.push({ kind: "attn", layer });
+  }
+  levels.push({ kind: "input", name: "Input" });
+
+  // Even spacing between every level, so each attention row sits exactly
+  // halfway between the MLP above it (toward Output) and the MLP below it
+  // (toward Input).
+  const usableHeight = height - padTop - padBottom;
+  const rowGap = usableHeight / (levels.length - 1);
+
+  const yByLevel: number[] = [];
+  for (let i = 0; i < levels.length; i += 1) {
+    yByLevel.push(padTop + i * rowGap);
+  }
+
+  const nodeHeight = clamp(rowGap * 0.6, 14, 40);
+  const centerX = width / 2;
+  const usableWidth = width - 2 * padX;
+  const headSlot = usableWidth / nHeads;
+  const headWidth = clamp(headSlot * 0.82, 20, 128);
+  const mainWidth = clamp(headWidth * 1.6, 68, 190);
+  const mainFont = clamp(nodeHeight * 0.44, 9, 16);
+  const headFont = clamp(Math.min(nodeHeight * 0.44, headWidth * 0.24), 7, 14);
+
+  const nodes: GraphNode[] = [];
+  levels.forEach((level, index) => {
+    const y = yByLevel[index];
+    if (level.kind === "attn") {
+      for (let head = 0; head < nHeads; head += 1) {
+        nodes.push({
+          name: `A${level.layer}.H${head}`,
+          kind: "attention",
+          x: padX + headSlot * head + headSlot / 2,
+          y,
+          width: headWidth,
+          height: nodeHeight,
+          fontSize: headFont,
+        });
+      }
+    } else {
+      nodes.push({
+        name: level.name,
+        kind: level.kind,
+        x: centerX,
+        y,
+        width: mainWidth,
+        height: nodeHeight,
+        fontSize: mainFont,
+      });
+    }
+  });
+
+  const edges: Array<[string, string]> = [];
+  for (let head = 0; head < nHeads; head += 1) edges.push(["Input", `A0.H${head}`]);
+  for (let layer = 0; layer < nLayers; layer += 1) {
+    for (let head = 0; head < nHeads; head += 1) {
+      edges.push([`A${layer}.H${head}`, `MLP${layer}`]);
+    }
+    if (layer < nLayers - 1) {
+      for (let head = 0; head < nHeads; head += 1) {
+        edges.push([`MLP${layer}`, `A${layer + 1}.H${head}`]);
+      }
+    }
+  }
+  if (nLayers > 0) edges.push([`MLP${nLayers - 1}`, "Output"]);
+
+  return {
+    width,
+    height,
+    nodes,
+    edges,
+    strokeWidth: clamp(nodeHeight * 0.08, 1.5, 3),
+  };
 }
 
 function ModelGraph({
@@ -268,138 +459,138 @@ function ModelGraph({
   status: JobStatus;
   onOpenNode: (nodeName: string, node: NodeStatus) => void;
 }) {
-  const layers = Array.from({ length: status.n_layers ?? 0 }, (_, layer) => layer);
-  const heads = Array.from({ length: status.n_heads ?? 0 }, (_, head) => head);
+  const [ref, size] = useElementSize<HTMLDivElement>();
+  const [tip, setTip] = useState<TipData | null>(null);
   const nLayers = status.n_layers ?? 0;
-  const headSpacing = 86;
-  const graphWidth = Math.max(1120, heads.length * headSpacing + 240);
-  const centerX = graphWidth / 2;
-  const outputY = 62;
-  const layerGap = 150;
-  const headToMlpGap = 72;
-  const terminalGap = 112;
-  const nodeHeight = 44;
-  const headWidth = 72;
-  const mainWidth = 120;
-  const inputY = outputY + terminalGap + layers.length * layerGap;
-  const graphHeight = inputY + 72;
+  const nHeads = status.n_heads ?? 0;
 
-  const graphNodes = useMemo(() => {
-    const result: GraphNode[] = [
-      {
-        name: "Output",
-        node: status.nodes.Output,
-        x: centerX,
-        y: outputY,
-        width: mainWidth,
-        height: nodeHeight,
-      },
-    ];
+  const showTip = useCallback((info: TipInfo, event: React.MouseEvent) => {
+    setTip({ ...info, x: event.clientX, y: event.clientY });
+  }, []);
+  const hideTip = useCallback(() => setTip(null), []);
 
-    for (const layer of layers) {
-      const visualIndex = nLayers - 1 - layer;
-      const mlpY = outputY + terminalGap + visualIndex * layerGap;
-      const headY = mlpY + headToMlpGap;
-      const headStartX = centerX - ((heads.length - 1) * headSpacing) / 2;
-
-      const mlpName = `MLP${layer}`;
-      result.push({
-        name: mlpName,
-        node: status.nodes[mlpName],
-        x: centerX,
-        y: mlpY,
-        width: mainWidth,
-        height: nodeHeight,
-      });
-
-      for (const head of heads) {
-        const name = `A${layer}.H${head}`;
-        result.push({
-          name,
-          node: status.nodes[name],
-          x: headStartX + head * headSpacing,
-          y: headY,
-          width: headWidth,
-          height: nodeHeight,
-        });
-      }
-    }
-
-    result.push({
-      name: "Input",
-      node: status.nodes.Input,
-      x: centerX,
-      y: inputY,
-      width: mainWidth,
-      height: nodeHeight,
-    });
-
-    return result;
-  }, [centerX, heads, inputY, layers, nLayers, outputY, status.nodes]);
-
-  const nodesByName = useMemo(
-    () => new Map(graphNodes.map((node) => [node.name, node])),
-    [graphNodes],
+  // Positions depend only on model shape and container size, not on which
+  // nodes are ready yet, so live polling updates never re-flow the graph.
+  const layout = useMemo(
+    () => computeLayout(nLayers, nHeads, size.width, size.height),
+    [nLayers, nHeads, size.width, size.height],
   );
 
-  const edges = useMemo(() => {
-    const result: Array<[string, string]> = [];
-    for (const head of heads) {
-      result.push(["Input", `A0.H${head}`]);
-    }
-    for (const layer of layers) {
-      for (const head of heads) {
-        result.push([`A${layer}.H${head}`, `MLP${layer}`]);
-      }
-      if (layer < layers.length - 1) {
-        for (const head of heads) {
-          result.push([`MLP${layer}`, `A${layer + 1}.H${head}`]);
-        }
-      }
-    }
-    if (layers.length > 0) {
-      result.push([`MLP${layers.length - 1}`, "Output"]);
-    }
-    return result;
-  }, [heads, layers]);
+  const nodesByName = useMemo(() => {
+    if (!layout) return new Map<string, GraphNode>();
+    return new Map(layout.nodes.map((node) => [node.name, node]));
+  }, [layout]);
 
   return (
-    <div className="graphShell">
-      <svg
-        className="modelSvg"
-        viewBox={`0 0 ${graphWidth} ${graphHeight}`}
-        role="img"
-        aria-label="Transformer model graph"
-      >
-        <g className="edges">
-          {edges.map(([sourceName, targetName]) => {
-            const source = nodesByName.get(sourceName);
-            const target = nodesByName.get(targetName);
-            if (!source || !target) return null;
-            const sourceReady = Boolean(source.node?.ready);
-            const targetReady = Boolean(target.node?.ready);
-            return (
-              <path
-                key={`${sourceName}-${targetName}`}
-                d={curvePath(source, target)}
-                stroke={rankColor(source.node?.rank ?? null)}
-                className={sourceReady && targetReady ? "edge ready" : "edge pending"}
+    <div className="graphShell" ref={ref}>
+      {layout && (
+        <svg
+          className="modelSvg"
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label="Transformer model graph"
+        >
+          <g className="edges">
+            {layout.edges.map(([sourceName, targetName]) => {
+              const source = nodesByName.get(sourceName);
+              const target = nodesByName.get(targetName);
+              if (!source || !target) return null;
+              const sourceNode = status.nodes[sourceName];
+              const targetNode = status.nodes[targetName];
+              const ready = Boolean(sourceNode?.ready && targetNode?.ready);
+              return (
+                <path
+                  key={`${sourceName}-${targetName}`}
+                  d={curvePath(source, target)}
+                  stroke={rankColor(sourceNode?.rank ?? null)}
+                  strokeWidth={layout.strokeWidth}
+                  className={ready ? "edge ready" : "edge pending"}
+                />
+              );
+            })}
+          </g>
+          <g className="nodes">
+            {layout.nodes.map((graphNode) => (
+              <SvgNode
+                key={graphNode.name}
+                graphNode={graphNode}
+                node={status.nodes[graphNode.name]}
+                expectedAnswer={status.expected_answer}
+                strokeWidth={layout.strokeWidth * 2.6}
+                onOpenNode={onOpenNode}
+                onShowTip={showTip}
+                onHideTip={hideTip}
               />
-            );
-          })}
-        </g>
-        <g className="nodes">
-          {graphNodes.map((graphNode) => (
-            <SvgNode
-              key={graphNode.name}
-              graphNode={graphNode}
-              expectedAnswer={status.expected_answer}
-              onOpenNode={onOpenNode}
-            />
-          ))}
-        </g>
-      </svg>
+            ))}
+          </g>
+        </svg>
+      )}
+
+      {tip && <NodeTooltip tip={tip} />}
+
+      <div className="legend">
+        <span className="legend-item">
+          <span className="legend-gradient" />
+          枠線・接続線が緑に近いほど、その地点で期待する単語の順位が高い (5000位以下はグレー表示)
+        </span>
+      </div>
     </div>
+  );
+}
+
+type TipInfo = {
+  name: string;
+  expected: string;
+  rank: number | null;
+  ready: boolean;
+};
+
+type TipData = TipInfo & { x: number; y: number };
+
+// Cursor-anchored tooltip, flipping away from the right/bottom viewport edges.
+// Fixed-positioned so it escapes overflow/scroll clipping and modal stacking.
+function Tooltip({
+  x,
+  y,
+  children,
+}: {
+  x: number;
+  y: number;
+  children: React.ReactNode;
+}) {
+  const flipX = x > window.innerWidth - 320;
+  const flipY = y > window.innerHeight - 110;
+  const style: React.CSSProperties = {
+    left: x,
+    top: y,
+    transform: `translate(${flipX ? "calc(-100% - 16px)" : "16px"}, ${
+      flipY ? "calc(-100% - 12px)" : "18px"
+    })`,
+  };
+  return (
+    <div className="tooltip" style={style}>
+      {children}
+    </div>
+  );
+}
+
+function NodeTooltip({ tip }: { tip: TipData }) {
+  return (
+    <Tooltip x={tip.x} y={tip.y}>
+      <span className="tip-name">{tip.name}</span>
+      <span className="tip-detail">
+        {!tip.ready ? (
+          "生成中…"
+        ) : tip.rank != null ? (
+          <>
+            期待する単語「{tip.expected}」: <span className="tip-rank">{tip.rank}</span> 位
+          </>
+        ) : (
+          "順位は未計算"
+        )}
+      </span>
+    </Tooltip>
   );
 }
 
@@ -409,31 +600,32 @@ function curvePath(source: GraphNode, target: GraphNode) {
   const targetIsBelow = target.y > source.y;
   const y1 = source.y + (targetIsBelow ? source.height / 2 : -source.height / 2);
   const y2 = target.y + (targetIsBelow ? -target.height / 2 : target.height / 2);
-  const bend = Math.max(32, Math.abs(y2 - y1) * 0.48);
+  const bend = Math.max(24, Math.abs(y2 - y1) * 0.48);
   const direction = targetIsBelow ? 1 : -1;
   return `M ${x1} ${y1} C ${x1} ${y1 + direction * bend}, ${x2} ${y2 - direction * bend}, ${x2} ${y2}`;
 }
 
-function SvgNode({
+const SvgNode = React.memo(function SvgNode({
   graphNode,
+  node,
   expectedAnswer,
+  strokeWidth,
   onOpenNode,
+  onShowTip,
+  onHideTip,
 }: {
   graphNode: GraphNode;
+  node: NodeStatus | undefined;
   expectedAnswer: string;
+  strokeWidth: number;
   onOpenNode: (nodeName: string, node: NodeStatus) => void;
+  onShowTip: (info: TipInfo, event: React.MouseEvent) => void;
+  onHideTip: () => void;
 }) {
-  const { name, node, x, y, width, height } = graphNode;
+  const { name, kind, x, y, width, height, fontSize } = graphNode;
   const ready = Boolean(node?.ready);
   const color = rankColor(node?.rank ?? null);
-  const fill =
-    node?.kind === "attention"
-      ? "#ff8d8d"
-      : node?.kind === "mlp"
-        ? "#f8fff8"
-        : node?.kind === "output"
-          ? "#ffe0ad"
-          : "#d4dae3";
+  const fill = NODE_FILL[kind];
   const rankLabel =
     expectedAnswer && node?.rank
       ? `期待する次の単語「${expectedAnswer}」: ${node.rank} 位`
@@ -450,61 +642,215 @@ function SvgNode({
     }
   }
 
+  function onEnter(event: React.MouseEvent) {
+    onShowTip({ name, expected: expectedAnswer, rank: node?.rank ?? null, ready }, event);
+  }
+
   return (
     <g
-      className={`svgNode ${ready ? "ready" : "pending"} ${node?.kind ?? ""}`}
+      className={`svgNode ${ready ? "ready" : "pending"} ${kind}`}
       role={ready ? "button" : "img"}
       tabIndex={ready ? 0 : undefined}
       aria-label={ready ? `${name}、${rankLabel}` : `${name} は生成中`}
       style={{ "--rank-color": color } as React.CSSProperties}
       onClick={open}
       onKeyDown={onKeyDown}
+      onMouseEnter={onEnter}
+      onMouseLeave={onHideTip}
     >
-      <title>{ready ? rankLabel : `${name} は生成中`}</title>
       <rect
         x={x - width / 2}
         y={y - height / 2}
         width={width}
         height={height}
-        rx={8}
+        rx={Math.min(8, height / 2)}
         fill={fill}
         stroke={color}
+        strokeWidth={strokeWidth}
       />
-      <text x={x} y={y + 7} textAnchor="middle">
+      <text
+        x={x}
+        y={y}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={fontSize}
+      >
         {name}
       </text>
     </g>
   );
-}
+});
 
-function ImageModal({ detail, onClose }: { detail: NodeDetail; onClose: () => void }) {
+function DetailModal({
+  detail,
+  expected,
+  onClose,
+}: {
+  detail: NodeDetail;
+  expected: string;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="modal" onClick={onClose}>
       <div className="modalBody" onClick={(event) => event.stopPropagation()}>
         <header>
           <div>
             <p className="eyebrow">{detail.node}</p>
-            <h2>{detail.rank ? `rank ${detail.rank}` : "Detail"}</h2>
+            <h2>
+              {detail.rank ? `期待する単語「${expected}」: ${detail.rank} 位` : "ノードの詳細"}
+            </h2>
           </div>
-          <button onClick={onClose} aria-label="閉じる">
-            x
+          <button className="ghost closeButton" onClick={onClose} aria-label="閉じる">
+            ✕
           </button>
         </header>
-        <div className={detail.attention_image && detail.logits_image ? "imageGrid" : "imageGrid single"}>
-          {detail.attention_image && (
+        <div className={detail.attention && detail.logits ? "detailGrid" : "detailGrid single"}>
+          {detail.attention && (
             <figure>
               <figcaption>注意パターン</figcaption>
-              <img src={`data:image/png;base64,${detail.attention_image}`} alt={`${detail.node} attention`} />
+              <AttentionHeatmap data={detail.attention} />
             </figure>
           )}
-          {detail.logits_image && (
+          {detail.logits && (
             <figure>
               <figcaption>予測ランキング</figcaption>
-              <img src={`data:image/png;base64,${detail.logits_image}`} alt={`${detail.node} logits`} />
+              <LogitsRanking data={detail.logits} />
             </figure>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function AttentionHeatmap({ data }: { data: AttentionData }) {
+  const cellSize = 28;
+  const labelSize = 118;
+  const size = data.tokens.length * cellSize;
+  const maxValue = Math.max(...data.values.flat(), 1);
+  const [tip, setTip] = useState<{ row: number; col: number; value: number; x: number; y: number } | null>(
+    null,
+  );
+
+  return (
+    <div className="heatmapScroll">
+      <svg
+        className="attentionSvg"
+        viewBox={`0 0 ${labelSize + size} ${labelSize + size}`}
+        role="img"
+        aria-label="Attention heatmap"
+      >
+        {data.tokens.map((token, index) => {
+          const colCenter = labelSize + index * cellSize + cellSize / 2;
+          return (
+          <g key={`label-${index}`} className="heatmapLabel">
+            <text
+              x={colCenter}
+              y={labelSize - 8}
+              textAnchor="start"
+              dominantBaseline="central"
+              transform={`rotate(270 ${colCenter} ${labelSize - 8})`}
+            >
+              {token}
+            </text>
+            <text
+              x={labelSize - 10}
+              y={labelSize + index * cellSize + cellSize / 2 + 4}
+              textAnchor="end"
+            >
+              {token}
+            </text>
+          </g>
+          );
+        })}
+        {data.values.flatMap((row, rowIndex) =>
+          row.map((value, columnIndex) => {
+            const x = labelSize + columnIndex * cellSize;
+            const y = labelSize + rowIndex * cellSize;
+            // Above the diagonal is masked by causal attention (always 0.0):
+            // render it pure white with no tooltip / no hover.
+            if (columnIndex > rowIndex) {
+              return (
+                <rect
+                  key={`${rowIndex}-${columnIndex}`}
+                  x={x}
+                  y={y}
+                  width={cellSize}
+                  height={cellSize}
+                  fill="#ffffff"
+                />
+              );
+            }
+            const intensity = Math.max(0, Math.min(1, value / maxValue));
+            return (
+              <rect
+                key={`${rowIndex}-${columnIndex}`}
+                x={x}
+                y={y}
+                width={cellSize}
+                height={cellSize}
+                fill={attentionColor(intensity)}
+                stroke="#ffffff"
+                strokeWidth="1"
+                onMouseEnter={(event) =>
+                  setTip({ row: rowIndex, col: columnIndex, value, x: event.clientX, y: event.clientY })
+                }
+                onMouseLeave={() => setTip(null)}
+              />
+            );
+          }),
+        )}
+      </svg>
+      {tip && (
+        <Tooltip x={tip.x} y={tip.y}>
+          <span className="tip-name">
+            {data.tokens[tip.row]} → {data.tokens[tip.col]}
+          </span>
+          <span className="tip-detail">
+            attention: <span className="tip-rank">{tip.value.toFixed(3)}</span>
+          </span>
+        </Tooltip>
+      )}
+    </div>
+  );
+}
+
+// Sequential ramp along the primary hue: primary-50 (low) -> primary-700 (high).
+function attentionColor(intensity: number) {
+  const from: [number, number, number] = [241, 247, 253];
+  const to: [number, number, number] = [39, 79, 124];
+  const t = Math.max(0, Math.min(1, intensity));
+  const c = from.map((f, i) => Math.round(f + (to[i] - f) * t));
+  return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+}
+
+function LogitsRanking({ data }: { data: LogitsData }) {
+  const minimum = Math.min(...data.values);
+  const maximum = Math.max(...data.values);
+  const range = maximum - minimum || 1;
+
+  return (
+    <div className="logitsList">
+      {data.tokens.map((token, index) => {
+        const width = 18 + ((data.values[index] - minimum) / range) * 82;
+        return (
+          <div className="logitRow" key={`${token}-${index}`}>
+            <span className="logitToken">{token}</span>
+            <div className="logitBarTrack">
+              <div className="logitBar" style={{ width: `${width}%` }} />
+            </div>
+            <span className="logitValue">{data.values[index].toFixed(2)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -520,6 +866,14 @@ function SampleModal({
   onSelect: (sample: PromptSample) => void;
   onClose: () => void;
 }) {
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div className="modal" onClick={onClose}>
       <div className="modalBody sampleModalBody" onClick={(event) => event.stopPropagation()}>
@@ -527,13 +881,16 @@ function SampleModal({
           <div>
             <p className="eyebrow">Samples</p>
             <h2>サンプルを選択</h2>
+            <p className="modal-note">
+              <span className="accentWord">この色のテキスト</span> が期待する次の単語です
+            </p>
           </div>
-          <button onClick={onClose} aria-label="閉じる">
-            x
+          <button className="ghost closeButton" onClick={onClose} aria-label="閉じる">
+            ✕
           </button>
         </header>
         {isLoading ? (
-          <div className="waitingPanel compact">サンプル一覧を読み込み中です</div>
+          <div className="waitingPanel">サンプル一覧を読み込み中です</div>
         ) : (
           <div className="sampleList">
             {samples.map((sample) => (
@@ -542,10 +899,8 @@ function SampleModal({
                 key={`${sample.prompt}-${sample.expected_answer}`}
                 onClick={() => onSelect(sample)}
               >
-                <span className="sampleSubject">{sample.subject}</span>
-                <span className="samplePrompt">{sample.prompt}</span>
-                <span className="sampleMeta">
-                  answer: {sample.expected_answer} / {sample.keywords}
+                <span className="samplePrompt">
+                  {sample.prompt} <span className="accentWord">{sample.expected_answer}</span>
                 </span>
               </button>
             ))}

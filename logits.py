@@ -1,19 +1,19 @@
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from matplotlib.ticker import FormatStrFormatter
 from transformer_lens import HookedTransformer
 
 
 def _setup_matplotlib():
     """matplotlib の基本設定を行う関数."""
     import warnings
+
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
 
     # matplotlib 関連の警告を抑制
     warnings.filterwarnings("ignore", category=UserWarning, module="matplotlib")
@@ -34,6 +34,8 @@ def _setup_matplotlib():
                 break
     except Exception:
         pass  # フォント設定に失敗しても続行
+
+    return plt
 
 
 def _clean_token_text(text: str) -> str:
@@ -195,7 +197,8 @@ def _visualize_top_k_tokens(
     Returns:
         None
     """
-    _setup_matplotlib()
+    plt = _setup_matplotlib()
+    from matplotlib.ticker import FormatStrFormatter
 
     # logits を numpy 配列に変換して上位 K 個を取得
     logits_np = (
