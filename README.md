@@ -14,19 +14,13 @@
   <img src="figures/samples/logits_sample.png" width="35%" alt="Logits の可視化">
 </p>
 
-## 🌐 デモサイト
-
-以下の URL からアプリをブラウザ上で直接体験できます：
-
-🔗 [https://fukata-k-visualize-llm-app-app-j0bqwd.streamlit.app/](https://fukata-k-visualize-llm-app-app-j0bqwd.streamlit.app/)
-
 ## 🔍 主な機能
 
 - 任意のプロンプト入力に対する LLM の出力可視化
 - Attention Pattern の可視化（各層・各ヘッド）
 - MLP および Attention 出力の表示
 
-## 🛠️ セットアップ方法（Conda 推奨）
+## 🛠️ セットアップ方法（uv 推奨）
 
 ### 1. リポジトリのクローン
 
@@ -35,19 +29,23 @@ git clone https://github.com/Fukata-K/visualize_llm_app.git
 cd visualize_llm_app
 ```
 
-### 2. Conda 環境の作成
+### 2. Python 環境の構築（uv）
+
+[uv](https://docs.astral.sh/uv/) で依存関係をインストールします（Python 3.12）．
 
 ```bash
-conda env create -f environment_local.yml
-conda activate visualize_llm
+uv sync
 ```
 
-### 3. React + FastAPI 版の起動
+`pygraphviz` のビルドで失敗する場合は，後述の「⚠️ インストール時の注意点」を参照してください．<br>
+Conda を使いたい場合は `environment_local.yml` も残しています（`conda env create -f environment_local.yml`）．
+
+### 3. React + FastAPI 版の起動（開発）
 
 バックエンドを起動します．
 
 ```bash
-uvicorn backend:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn backend:app --reload --host 127.0.0.1 --port 8000
 ```
 
 別のターミナルでフロントエンドを起動します．
@@ -60,20 +58,36 @@ npm run dev
 
 ブラウザで `http://127.0.0.1:5173` を開きます．
 
-React 版では，解析ジョブの進捗をポーリングし，生成済みの Attention Head / MLP / Output ノードから順にクリックできるようになります．全 transformer layer の画像生成完了を待つ必要はありません．
+React 版では，解析ジョブの進捗をポーリングし，生成済みの Attention Head / MLP / Output ノードから順にクリックできるようになります．全 transformer layer の処理完了を待つ必要はありません．各ノードの詳細（Attention Pattern / 予測ランキング）は画像ではなく JSON で返され，ブラウザ側で描画されます．
 
-### 4. Streamlit 版の起動
+### 4. 本番配信（uvicorn のみ）
+
+フロントエンドをビルドしておくと，FastAPI がその成果物（`frontend/dist`）を同一オリジンで配信します．uvicorn 1 プロセスだけで UI と API の両方を提供できます．
+
+```bash
+cd frontend
+npm run build          # frontend/dist を生成
+cd ..
+uv run uvicorn backend:app --host 0.0.0.0 --port 8000
+```
+
+ブラウザで `http://localhost:8000` を開きます．
+
+- ビルド時は `frontend/.env.production` により，API 呼び出しが相対パス（同一オリジン）になります（CORS 不要）．
+- 解析ジョブはメモリ上，モデルはプロセスグローバルに保持されるため，**ワーカーは 1 のまま**（`--workers` を付けない）で運用してください．
+
+### 5. Streamlit 版の起動（任意）
 
 既存の Streamlit 版も比較用に残しています．
 
 ```bash
-streamlit run app.py
+uv run streamlit run app.py
 ```
 
 ブラウザが自動で開きます．<br>
 開かない場合は `Local URL:` に表示される URL を使用してください．
 
-### 5. アプリの終了
+### 6. アプリの終了
 
 各ターミナルで `Ctrl + C` を押して終了してください（ブラウザを閉じるだけでは終了されません）．
 
@@ -100,8 +114,8 @@ export LDFLAGS="-L$(brew --prefix graphviz)/lib"
 予測させたい部分が次の単語になるような文にしてください．推奨言語は英語です．<br>
 `Ex. Sendai is located in the country of`
 
-💡 **迷ったら `Random Sample` を押してください．**<br>
-このボタンをクリックすると，事前に用意されたサンプルの中からプロンプトと答えが自動で入力されます．
+💡 **迷ったら `Random` を押してください．**<br>
+`Random` でランダムなサンプル，`Samples` で一覧からプロンプトと答えを選んで自動入力できます．
 
 ### 2. 答え入力
 
@@ -109,49 +123,44 @@ export LDFLAGS="-L$(brew --prefix graphviz)/lib"
 `Ex. Japan`
 
 ### 3. 実行
-`Go` を押すと言語モデルの内部動作を表すグラフが表示されます．<br>
-React 版では解析済みのノードから順にクリック可能になります．未生成のノードは生成が終わるまで薄く表示されます．
-
-<p align="center">
-  <img src="figures/samples/app_initial_screen.png" width="90%" alt="初期画面">
-</p>
+`Go` を押すと言語モデルの内部動作を表すグラフが表示されます．
 
 ## 📁 ファイル構成（抜粋）
 
 ```
 .
-├── app.py                   # Streamlit アプリのエントリーポイント
-├── backend.py               # React 版で使う FastAPI バックエンド
-├── frontend/                # React フロントエンド
-├── attention_pattern.py     # Attention Pattern の抽出と可視化
-├── display_utils.py         # 描画用ユーティリティ関数
+├── backend.py               # FastAPI バックエンド（API ＋ ビルド済みフロントの配信）
+├── app.py                   # Streamlit 版のエントリーポイント
+├── frontend/                # React + Vite フロントエンド
+│ ├── src/                   #   main.tsx（UI 本体）, styles.css
+│ ├── index.html
+│ ├── vite.config.ts
+│ ├── .env.production        #   本番ビルド用の API ベース（相対パス）
+│ └── package.json
+├── model.py                 # モデルのロードとキャッシュ（pygraphviz 使用）
 ├── logits.py                # logit 関連の処理
-├── model.py                 # モデルのロードとキャッシュ
+├── attention_pattern.py     # Attention Pattern の抽出と可視化（Streamlit 版）
+├── display_utils.py         # 描画用ユーティリティ関数（Streamlit 版）
 ├── prompt.py                # プロンプト処理とランダム選択
 ├── data/
 │ ├── prompt_sample.csv      # ランダム選択用のプロンプトと回答
 │ └── README.md              # データセットの説明
-├── docs/
-│ ├── staff_demo_guide.pdf   # 運営用ガイド
-│ └── visitor_demo_guide.pdf # 来場者向けガイド
-├── figures/                 # 各種可視化画像を出力（自動生成）
-│ ├── attention_patterns/
-│ ├── graphs/
-│ ├── logits/
-│ └── samples/
-├── environment_local.yml    # Conda 用のローカル環境定義
+├── docs/                    # デモ用ガイド（PDF）
+├── figures/                 # Streamlit 版の可視化画像を出力（自動生成）
+├── pyproject.toml           # プロジェクト定義・依存関係（uv）
+├── uv.lock                  # 依存関係のロックファイル
+├── environment_local.yml    # Conda 用の環境定義（任意）
 ├── packages.txt             # system dependencies（pygraphviz 用）
 ├── requirements.txt         # Streamlit Cloud 用パッケージ定義
 └── README.md                # 本ファイル
 ```
 
-※ `figures/` ディレクトリ内の各種可視化画像は GitHub 上には含まれません．コード実行時に自動生成されます．
+※ `figures/` ディレクトリ内の可視化画像は GitHub 上には含まれず，Streamlit 版の実行時に自動生成されます（React 版はノード画像を生成しません）．
 
 ## ⚙️ 主なライブラリ
 
-- Python 3.10
-- Streamlit (v1.46.1)
-- TransformerLens (v2.16.1)
-- PyTorch (v2.7.1)
-- Matplotlib
-- PyGraphviz
+- Python 3.12（`requires-python >= 3.10`）
+- 環境管理: uv
+- バックエンド: FastAPI / Uvicorn / TransformerLens (v2.16.1) / PyTorch (v2.7.1)
+- フロントエンド: React 18 / Vite 6 / TypeScript
+- Streamlit 版: Streamlit (>=1.47.1) / Matplotlib (v3.10.3) / PyGraphviz (>=1.14)

@@ -1,12 +1,14 @@
 import threading
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 import torch
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from transformer_lens import HookedTransformer
 from transformer_lens.utils import get_act_name
@@ -371,6 +373,13 @@ def node_detail(job_id: str, node_name: str) -> NodeDetailResponse:
         attention=node.attention,
         logits=node.logits,
     )
+
+
+# Serve the built frontend from the same origin (production). Mounted after all
+# /api routes so those keep priority; guarded so dev (no dist yet) still works.
+_DIST = Path(__file__).parent / "frontend" / "dist"
+if _DIST.is_dir():
+    app.mount("/", StaticFiles(directory=_DIST, html=True), name="frontend")
 
 
 if __name__ == "__main__":
