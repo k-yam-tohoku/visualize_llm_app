@@ -1,6 +1,6 @@
 # Visualize LLM App
 
-このアプリケーションは，大規模言語モデル (LLM) の内部動作を可視化する Streamlit 製の Web アプリです．<br>
+このアプリケーションは，大規模言語モデル (LLM) の内部動作を可視化する Web アプリです．<br>
 特定の入力に対して，モデルがどのように予測を行っているかを，**Attention Pattern** や **中間層の出力** といった観点から視覚的に理解できます．
 
 本アプリは，東北大学オープンキャンパスにおける研究室展示の一部として開発されたデモ用アプリケーションです．
@@ -42,7 +42,29 @@ conda env create -f environment_local.yml
 conda activate visualize_llm
 ```
 
-### 3. アプリの起動
+### 3. React + FastAPI 版の起動
+
+バックエンドを起動します．
+
+```bash
+uvicorn backend:app --reload --host 127.0.0.1 --port 8000
+```
+
+別のターミナルでフロントエンドを起動します．
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+ブラウザで `http://127.0.0.1:5173` を開きます．
+
+React 版では，解析ジョブの進捗をポーリングし，生成済みの Attention Head / MLP / Output ノードから順にクリックできるようになります．全 transformer layer の画像生成完了を待つ必要はありません．
+
+### 4. Streamlit 版の起動
+
+既存の Streamlit 版も比較用に残しています．
 
 ```bash
 streamlit run app.py
@@ -51,9 +73,9 @@ streamlit run app.py
 ブラウザが自動で開きます．<br>
 開かない場合は `Local URL:` に表示される URL を使用してください．
 
-### 4. アプリの終了
+### 5. アプリの終了
 
-`Ctrl + C` で終了してください（ブラウザを閉じるだけでは終了されません）．
+各ターミナルで `Ctrl + C` を押して終了してください（ブラウザを閉じるだけでは終了されません）．
 
 
 ## ⚠️ インストール時の注意点
@@ -88,7 +110,7 @@ export LDFLAGS="-L$(brew --prefix graphviz)/lib"
 
 ### 3. 実行
 `Go` を押すと言語モデルの内部動作を表すグラフが表示されます．<br>
-約30秒ほど経つとノードをクリックして各種情報を閲覧できるようになります．
+React 版では解析済みのノードから順にクリック可能になります．未生成のノードは生成が終わるまで薄く表示されます．
 
 <p align="center">
   <img src="figures/samples/app_initial_screen.png" width="90%" alt="初期画面">
@@ -99,6 +121,8 @@ export LDFLAGS="-L$(brew --prefix graphviz)/lib"
 ```
 .
 ├── app.py                   # Streamlit アプリのエントリーポイント
+├── backend.py               # React 版で使う FastAPI バックエンド
+├── frontend/                # React フロントエンド
 ├── attention_pattern.py     # Attention Pattern の抽出と可視化
 ├── display_utils.py         # 描画用ユーティリティ関数
 ├── logits.py                # logit 関連の処理

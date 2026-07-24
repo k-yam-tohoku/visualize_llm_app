@@ -1,4 +1,6 @@
 streamlit==1.46.1
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
 matplotlib==3.10.3
 torch==2.7.1
 transformer-lens==2.16.1

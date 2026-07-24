@@ -211,3 +211,8 @@ __marimo__/
 # Others
 figures/*
 !figures/samples/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+.npm-cache/

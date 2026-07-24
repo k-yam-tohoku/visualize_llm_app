@@ -31,6 +31,32 @@ def get_random_prompt(csv_path: str = "data/prompt_sample.csv") -> Tuple[str, st
     return selected["prompt"], selected["object"]
 
 
+def get_prompt_samples(csv_path: str = "data/prompt_sample.csv") -> list[dict[str, str]]:
+    """
+    CSV ファイルからサンプルプロンプト一覧を取得する.
+
+    Args:
+        csv_path (str): CSV ファイルのパス.
+
+    Returns:
+        list[dict[str, str]]: サンプル一覧.
+    """
+    csv_file = Path(csv_path)
+    samples = []
+    with open(csv_file, "r", encoding="utf-8") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            samples.append(
+                {
+                    "prompt": row["prompt"].strip(),
+                    "subject": row["subject"].strip(),
+                    "expected_answer": row["object"].strip(),
+                    "keywords": row["keywords"].strip(),
+                }
+            )
+    return samples
+
+
 def check_answer_correctness(
     model: HookedTransformer,
     prompt: str,
