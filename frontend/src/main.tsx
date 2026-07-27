@@ -263,19 +263,29 @@ function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <p className="eyebrow">Visualize LLM Demo</p>
-          <h1 className="brand-title">
+        <div className="topbar-top">
+          <div className="brand">
+            <h1 className="brand-name">Visualize LLM Demo</h1>
+            <p className="brand-desc">次の単語を予測する仕組み</p>
+          </div>
+
+          <div className="topbar-tools">
             <button
               type="button"
-              className="brand-titleBtn"
+              className="help"
               onClick={() => setIsAboutOpen(true)}
               title="このデモの説明を表示"
+              aria-label="このデモの説明を表示"
             >
-              次の単語を予測する仕組み
-              <span className="brand-hint" aria-hidden="true">?</span>
+              ?
             </button>
-          </h1>
+            <button type="button" className="ghost" onClick={fillRandomPrompt}>
+              例文からランダムに選ぶ
+            </button>
+            <button type="button" className="ghost" onClick={openSamples}>
+              例文を見て選ぶ
+            </button>
+          </div>
         </div>
 
         <form className="controls" onSubmit={startAnalysis}>
@@ -300,12 +310,6 @@ function App() {
           <div className="actions">
             <button type="submit" className="primary" disabled={isStarting || !prompt.trim()}>
               {isStarting ? "Starting…" : "Go"}
-            </button>
-            <button type="button" className="ghost" onClick={fillRandomPrompt}>
-              Random
-            </button>
-            <button type="button" className="ghost" onClick={openSamples}>
-              Samples
             </button>
           </div>
         </form>
@@ -451,7 +455,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             </li>
           </ul>
           <p>
-            💡 迷ったら <strong>Random</strong> / <strong>Samples</strong> でサンプル文章を入力できます
+            💡 迷ったら <strong>例文からランダムに選ぶ</strong> / <strong>例文を見て選ぶ</strong> でサンプル文章を入力できます
           </p>
         </section>
 

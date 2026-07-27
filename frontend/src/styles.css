@@ -53,6 +53,11 @@
   --sp-4xl: 48px;
   --sp-5xl: 64px;
 
+  /* Page rhythm — every band (header, status, stage) shares this horizontal
+     inset and vertical gap so their rounded cards line up in one column. */
+  --page-inset: clamp(var(--sp-xl), 2.4vw, var(--sp-4xl));
+  --page-gap: clamp(var(--sp-md), 1.6vh, var(--sp-2xl));
+
   /* Radius */
   --r-sm: 4px;
   --r-md: 8px;
@@ -122,72 +127,76 @@ input {
 }
 
 /* ---- Top bar (light theme) --------------------------------------------- */
+/* A rounded card, inset to line up with the status strip and graph stage.
+   Two stacked rows: brand + tools on top, the analysis form beneath it. */
 .topbar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-xl) var(--sp-2xl);
-  padding: var(--sp-lg) clamp(var(--sp-xl), 2.4vw, var(--sp-4xl));
+  flex-direction: column;
+  gap: var(--sp-lg);
+  margin: var(--page-gap) var(--page-inset) 0;
+  padding: var(--sp-lg) var(--sp-2xl);
   background: var(--neutral-50);
   color: var(--neutral-900);
-  border-bottom: 1px solid var(--neutral-200);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--r-lg);
   box-shadow: var(--shadow-sm);
   z-index: 3;
 }
 
+.topbar-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-md) var(--sp-2xl);
+}
+
 .brand {
-  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-sm) var(--sp-lg);
+  min-width: 0;
 }
 
-.brand .eyebrow {
-  color: var(--primary-600);
-}
-
-.brand h1 {
-  margin: 2px 0 0;
-  font-size: 1.1875rem;
+.brand-name {
+  margin: 0;
+  font-size: 1.375rem;
   font-weight: 700;
   line-height: 1.2;
   letter-spacing: 0.01em;
   white-space: nowrap;
-  color: var(--neutral-900);
+  color: var(--primary-700);
 }
 
-.brand-titleBtn {
-  height: auto;
-  display: inline-flex;
+.brand-desc {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--neutral-600);
+}
+
+.topbar-tools {
+  display: flex;
   align-items: center;
   gap: var(--sp-md);
-  margin: 0;
+  flex-shrink: 0;
+}
+
+.help {
+  width: 40px;
   padding: 0;
-  border: none;
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-  font: inherit;
-  color: inherit;
-  cursor: pointer;
-}
-
-.brand-titleBtn:hover:not(:disabled) {
-  background: none;
-  color: var(--primary-600);
-}
-
-.brand-hint {
-  display: grid;
-  place-items: center;
-  width: 20px;
-  height: 20px;
   border-radius: var(--r-full);
   background: var(--primary-100);
-  color: var(--primary-600);
-  font-size: 0.75rem;
+  border-color: var(--primary-300);
+  color: var(--primary-700);
+  font-size: 1.0625rem;
   font-weight: 700;
 }
 
-.brand-titleBtn:hover .brand-hint {
+.help:hover:not(:disabled) {
   background: var(--primary-200);
+  border-color: var(--primary-400);
 }
 
 .modal-note {
@@ -208,7 +217,6 @@ input {
   flex-wrap: wrap;
   align-items: flex-end;
   gap: var(--sp-lg);
-  flex: 1 1 460px;
   min-width: 0;
 }
 
@@ -363,9 +371,12 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: var(--sp-xl);
-  padding: var(--sp-md) clamp(var(--sp-xl), 2.4vw, var(--sp-4xl));
+  margin: var(--page-gap) var(--page-inset) 0;
+  padding: var(--sp-md) var(--sp-2xl);
   background: var(--neutral-50);
-  border-bottom: 1px solid var(--neutral-200);
+  border: 1px solid var(--neutral-200);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-sm);
   z-index: 2;
 }
 
@@ -386,8 +397,7 @@ button:disabled {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
-  padding: clamp(var(--sp-md), 1.6vh, var(--sp-2xl))
-    clamp(var(--sp-xl), 2.4vw, var(--sp-4xl));
+  padding: var(--page-gap) var(--page-inset);
   background: var(--neutral-100);
 }
 
@@ -837,8 +847,8 @@ figcaption {
     padding-bottom: var(--sp-md);
   }
 
-  .brand h1 {
-    font-size: 1.0625rem;
+  .brand-name {
+    font-size: 1.1875rem;
   }
 
   .stage {
