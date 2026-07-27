@@ -707,7 +707,7 @@ figcaption {
   border: 1px solid var(--neutral-200);
   border-radius: var(--r-md);
   background: var(--neutral-50);
-  padding: var(--sp-md);
+  padding: 0;
 }
 
 .attentionSvg {

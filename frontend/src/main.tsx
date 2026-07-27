@@ -875,6 +875,10 @@ function AttentionHeatmap({ data }: { data: AttentionData }) {
         role="img"
         aria-label="Attention heatmap"
       >
+        {/* Only the top-left corner is white; everything else keeps the panel
+            background, so the masked area above the diagonal blends into the
+            label gutters instead of reading as stripes. */}
+        <rect x={0} y={0} width={labelSize} height={labelSize} fill="#ffffff" />
         {data.tokens.map((token, index) => {
           const colCenter = labelSize + index * cellSize + cellSize / 2;
           return (
@@ -900,22 +904,13 @@ function AttentionHeatmap({ data }: { data: AttentionData }) {
         })}
         {data.values.flatMap((row, rowIndex) =>
           row.map((value, columnIndex) => {
+            // Above the diagonal is masked by causal attention (always 0.0):
+            // draw nothing, no tooltip / no hover.
+            if (columnIndex > rowIndex) {
+              return null;
+            }
             const x = labelSize + columnIndex * cellSize;
             const y = labelSize + rowIndex * cellSize;
-            // Above the diagonal is masked by causal attention (always 0.0):
-            // render it pure white with no tooltip / no hover.
-            if (columnIndex > rowIndex) {
-              return (
-                <rect
-                  key={`${rowIndex}-${columnIndex}`}
-                  x={x}
-                  y={y}
-                  width={cellSize}
-                  height={cellSize}
-                  fill="#ffffff"
-                />
-              );
-            }
             const intensity = Math.max(0, Math.min(1, value / maxValue));
             return (
               <rect
