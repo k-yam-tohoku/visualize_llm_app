@@ -606,8 +606,12 @@ button:disabled {
   padding: var(--sp-2xl);
 }
 
+/* Keep the header fixed and let only the example list scroll. */
 .sampleModalBody {
   width: min(860px, 96vw);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .aboutModalBody {
@@ -782,6 +786,11 @@ figcaption {
 .sampleList {
   display: grid;
   gap: var(--sp-md);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  /* Room so the scrollbar and focus outlines clear the list edges. */
+  padding: var(--sp-2xs) var(--sp-md) var(--sp-2xs) var(--sp-2xs);
 }
 
 .sampleItem {
