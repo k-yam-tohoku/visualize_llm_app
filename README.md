@@ -53,7 +53,7 @@ npm install
 npm run dev
 ```
 
-ブラウザで `http://127.0.0.1:5173` を開きます．
+ブラウザで `http://127.0.0.1:5178` を開きます．
 
 React 版では，解析ジョブの進捗をポーリングし，生成済みの Attention Head / MLP / Output ノードから順にクリックできるようになります．全 transformer layer の処理完了を待つ必要はありません．各ノードの詳細（Attention Pattern / 予測ランキング）は画像ではなく JSON で返され，ブラウザ側で描画されます．
 
@@ -65,7 +65,8 @@ React 版では，解析ジョブの進捗をポーリングし，生成済み�
 
 ```bash
 cd frontend
-npm run build          # frontend/dist を生成
+npm install
+npm run build
 cd ..
 uv run uvicorn backend:app --host 0.0.0.0 --port 8000
 ```
