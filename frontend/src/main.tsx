@@ -493,7 +493,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
 }
 
 // Build a layout that fills the given box: layers are distributed across the
-// full height (INPUT bottom, OUTPUT top — all visible) and attention heads
+// full height (INPUT top, OUTPUT bottom — all visible) and attention heads
 // spread across the full width. Works for any container aspect ratio, so a
 // landscape monitor uses the width and a pivoted monitor uses the height.
 function computeLayout(
@@ -506,7 +506,7 @@ function computeLayout(
 
   const padX = clamp(width * 0.03, 24, 96);
   const padTop = clamp(height * 0.05, 18, 56);
-  // Reserve room at the bottom for the legend overlay so the Input node,
+  // Reserve room at the bottom for the legend overlay so the Output node,
   // which sits centered on the last row, never collides with it.
   const padBottom = padTop + 44;
 
@@ -516,16 +516,15 @@ function computeLayout(
     | { kind: "mlp"; name: string; layer: number }
     | { kind: "attn"; layer: number };
 
-  const levels: Level[] = [{ kind: "output", name: "Output" }];
-  for (let visualIndex = 0; visualIndex < nLayers; visualIndex += 1) {
-    const layer = nLayers - 1 - visualIndex;
-    levels.push({ kind: "mlp", name: `MLP${layer}`, layer });
+  const levels: Level[] = [{ kind: "input", name: "Input" }];
+  for (let layer = 0; layer < nLayers; layer += 1) {
     levels.push({ kind: "attn", layer });
+    levels.push({ kind: "mlp", name: `MLP${layer}`, layer });
   }
-  levels.push({ kind: "input", name: "Input" });
+  levels.push({ kind: "output", name: "Output" });
 
   // Even spacing between every level, so each attention row sits exactly
-  // halfway between the MLP above it (toward Output) and the MLP below it
+  // halfway between the MLP below it (toward Output) and the MLP above it
   // (toward Input).
   const usableHeight = height - padTop - padBottom;
   const rowGap = usableHeight / (levels.length - 1);
